@@ -52,19 +52,13 @@ import com.jader.easyfinance.ui.theme.EasyFinanceTheme
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.emptyFlow
+import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.ktx.Firebase
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        // Inicializar Room Database
-        val db = Room.databaseBuilder(
-            applicationContext,
-            AppDatabase::class.java,
-            "easyfinance-db"
-        ).build()
-        val transactionDao = db.transactionDao()
-
         setContent {
             EasyFinanceTheme {
                 val navController = rememberNavController()
@@ -83,14 +77,12 @@ class MainActivity : ComponentActivity() {
                     composable("add_transaction") {
                         AddTransactionScreen(
                             navController = navController,
-                            transactionDao = transactionDao,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
                     composable("transactions") {
                         TransactionsScreen(
                             navController = navController,
-                            transactionDao = transactionDao,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -152,9 +144,9 @@ fun HomeScreen(
 @Composable
 fun AddTransactionScreen(
     navController: NavController,
-    transactionDao: TransactionDao,
     modifier: Modifier = Modifier
 ) {
+    val repository = remember { TransactionRepository() }
     var amount by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("") }
     var isIncome by remember { mutableStateOf(false) }
@@ -167,7 +159,6 @@ fun AddTransactionScreen(
         listOf("Alimentos", "Transporte", "Entretenimiento", "Hogar", "Otros")
     }
 
-    // Reiniciar categoría si no es válida
     if (category !in categories) {
         category = ""
     }
@@ -251,7 +242,7 @@ fun AddTransactionScreen(
                         val amountValue = amount.toDoubleOrNull()
                         if (amountValue != null) {
                             coroutineScope.launch {
-                                transactionDao.insert(
+                                repository.insert(
                                     Transaction(
                                         amount = amountValue,
                                         category = category,
@@ -292,10 +283,10 @@ fun AddTransactionScreen(
 @Composable
 fun TransactionsScreen(
     navController: NavController,
-    transactionDao: TransactionDao,
     modifier: Modifier = Modifier
 ) {
-    val transactions by transactionDao.getAllTransactions().collectAsState(initial = emptyList())
+    val repository = remember { TransactionRepository() }
+    val transactions by repository.getAllTransactions().collectAsState(initial = emptyList())
 
     Scaffold(
         modifier = modifier,
@@ -370,32 +361,3 @@ fun HomeScreenPreview() {
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun AddTransactionScreenPreview() {
-    EasyFinanceTheme {
-        AddTransactionScreen(
-            navController = rememberNavController(),
-            transactionDao = object : TransactionDao {
-                override suspend fun insert(transaction: Transaction) {}
-                override fun getAllTransactions(): Flow<List<Transaction>> = emptyFlow()
-            },
-            modifier = Modifier.fillMaxSize()
-        )
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun TransactionsScreenPreview() {
-    EasyFinanceTheme {
-        TransactionsScreen(
-            navController = rememberNavController(),
-            transactionDao = object : TransactionDao {
-                override suspend fun insert(transaction: Transaction) {}
-                override fun getAllTransactions(): Flow<List<Transaction>> = emptyFlow()
-            },
-            modifier = Modifier.fillMaxSize()
-        )
-    }
-}
