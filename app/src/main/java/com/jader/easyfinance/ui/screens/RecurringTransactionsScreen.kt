@@ -1,6 +1,5 @@
 package com.jader.easyfinance.ui.screens
 
-import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,7 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -19,15 +18,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -56,33 +51,25 @@ import java.util.TimeZone
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TransactionsScreen(
+fun RecurringTransactionsScreen(
     navController: NavController,
     transactionDao: TransactionDao,
     modifier: Modifier = Modifier
 ) {
-    var selectedFilter by remember { mutableIntStateOf(0) } // 0 = Todos, 1 = Ingresos, 2 = Gastos
-    var showDeleteDialog by remember { mutableStateOf(false) }
-    var transactionToDelete by remember { mutableStateOf<Transaction?>(null) }
-    val transactions by transactionDao.getAllTransactions().collectAsState(initial = emptyList())
-    val filteredTransactions = when (selectedFilter) {
-        1 -> transactions.filter { it.isIncome }
-        2 -> transactions.filter { !it.isIncome }
-        else -> transactions
-    }
+    var showStopDialog by remember { mutableStateOf(false) }
+    var templateToStop by remember { mutableStateOf<RecurringTransactionTemplate?>(null) }
+    val recurringTemplates by transactionDao.getRecurringTemplates().collectAsState(initial = emptyList())
     val decimalFormat = DecimalFormat("C$ #,##0.00")
     val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).apply {
         timeZone = TimeZone.getDefault()
     }
-    val totalIncomes = filteredTransactions.filter { it.isIncome }.sumOf { it.amount }
-    val totalExpenses = filteredTransactions.filter { !it.isIncome }.sumOf { it.amount }
     val coroutineScope = rememberCoroutineScope()
 
     Scaffold(
         modifier = modifier,
         topBar = {
             TopAppBar(
-                title = { Text("Transacciones") },
+                title = { Text("Transacciones Recurrentes") },
                 navigationIcon = {
                     IconButton(onClick = { navController.navigateUp() }) {
                         Icon(
@@ -101,47 +88,7 @@ fun TransactionsScreen(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            SingleChoiceSegmentedButtonRow(
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                SegmentedButton(
-                    selected = selectedFilter == 0,
-                    onClick = { selectedFilter = 0 },
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3)
-                ) {
-                    Text("Todos")
-                }
-                SegmentedButton(
-                    selected = selectedFilter == 1,
-                    onClick = { selectedFilter = 1 },
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3)
-                ) {
-                    Text("Ingresos")
-                }
-                SegmentedButton(
-                    selected = selectedFilter == 2,
-                    onClick = { selectedFilter = 2 },
-                    shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3)
-                ) {
-                    Text("Gastos")
-                }
-            }
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.Start
-            ) {
-                Text(
-                    text = "Total Ingresos: ${decimalFormat.format(totalIncomes)}",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "Total Gastos: ${decimalFormat.format(totalExpenses)}",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            if (filteredTransactions.isEmpty()) {
+            if (recurringTemplates.isEmpty()) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -150,11 +97,7 @@ fun TransactionsScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = when (selectedFilter) {
-                            1 -> "No hay ingresos"
-                            2 -> "No hay gastos"
-                            else -> "No hay transacciones"
-                        },
+                        text = "No hay transacciones recurrentes",
                         fontSize = 18.sp,
                         textAlign = TextAlign.Center
                     )
@@ -166,7 +109,7 @@ fun TransactionsScreen(
                         .padding(top = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(filteredTransactions) { transaction ->
+                    items(recurringTemplates) { template ->
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -179,37 +122,35 @@ fun TransactionsScreen(
                             ) {
                                 Column {
                                     Text(
-                                        text = "${if (transaction.isIncome) "Ingreso" else "Gasto"}: ${decimalFormat.format(transaction.amount)}",
+                                        text = "${if (template.isIncome) "Ingreso" else "Gasto"}: ${decimalFormat.format(template.amount)}",
                                         fontSize = 16.sp,
                                         fontWeight = FontWeight.Bold
                                     )
                                     Text(
-                                        text = "Categoría: ${transaction.category}",
+                                        text = "Categoría: ${template.category}",
                                         fontSize = 14.sp
                                     )
-                                    if (transaction.isRecurring) {
+                                    Text(
+                                        text = "Recurrente: ${
+                                            when (template.recurrenceType) {
+                                                "WEEKLY" -> "Semanal"
+                                                "BIWEEKLY" -> "Quincenal"
+                                                "MONTHLY" -> "Mensual"
+                                                else -> ""
+                                            }
+                                        }",
+                                        fontSize = 14.sp
+                                    )
+                                    template.startDate?.let {
                                         Text(
-                                            text = "Recurrente: ${
-                                                when (transaction.recurrenceType) {
-                                                    "WEEKLY" -> "Semanal"
-                                                    "BIWEEKLY" -> "Quincenal"
-                                                    "MONTHLY" -> "Mensual"
-                                                    else -> ""
-                                                }
-                                            }",
+                                            text = "Inicio: ${dateFormat.format(Date(it))}",
                                             fontSize = 14.sp
                                         )
-                                        transaction.startDate?.let {
-                                            Text(
-                                                text = "Inicio: ${dateFormat.format(Date(it))}",
-                                                fontSize = 14.sp
-                                            )
-                                        }
                                     }
                                 }
                                 Row {
                                     IconButton(onClick = {
-                                        navController.navigate("add_transaction/${transaction.id}")
+                                        navController.navigate("add_transaction_template/${template.id}")
                                     }) {
                                         Icon(
                                             imageVector = Icons.Default.Edit,
@@ -217,12 +158,12 @@ fun TransactionsScreen(
                                         )
                                     }
                                     IconButton(onClick = {
-                                        transactionToDelete = transaction
-                                        showDeleteDialog = true
+                                        templateToStop = template
+                                        showStopDialog = true
                                     }) {
                                         Icon(
-                                            imageVector = Icons.Default.Delete,
-                                            contentDescription = "Eliminar"
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Detener recurrencia"
                                         )
                                     }
                                 }
@@ -234,40 +175,41 @@ fun TransactionsScreen(
         }
     }
 
-    // Diálogo de confirmación para eliminación
-    if (showDeleteDialog && transactionToDelete != null) {
+    // Diálogo de confirmación para detener recurrencia
+    if (showStopDialog && templateToStop != null) {
         AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Confirmar eliminación") },
-            text = { Text("No se puede recuperar la transacción específica.") },
+            onDismissRequest = { showStopDialog = false },
+            title = { Text("Confirmar detener recurrencia") },
+            text = { Text("¿Deseas detener la recurrencia permanentemente? Esto no eliminará transacciones existentes.") },
             confirmButton = {
                 Button(
                     onClick = {
                         coroutineScope.launch {
-                            transactionToDelete?.let { transaction ->
-                                transactionDao.delete(transaction)
-                                // Si es Sueldo, eliminar la transacción de impuestos asociada
-                                if (transaction.isIncome && transaction.category == "Sueldo") {
-                                    transaction.startDate?.let { startDate ->
-                                        transaction.recurrenceType?.let { recurrenceType ->
-                                            val taxTransaction = transactionDao.getTaxTransaction(startDate, recurrenceType)
-                                            Log.d("TaxDeleteDebug", "Tax transaction found: $taxTransaction")
-                                            taxTransaction?.let { transactionDao.delete(it) }
+                            templateToStop?.let { template ->
+                                transactionDao.updateTemplate(template.copy(isRecurring = false))
+                                // Si es Sueldo, detener la recurrencia del impuesto asociado
+                                if (template.isIncome && template.category == "Sueldo") {
+                                    template.startDate?.let { startDate ->
+                                        template.recurrenceType?.let { recurrenceType ->
+                                            val taxTemplate = transactionDao.getTaxTemplate(startDate, recurrenceType)
+                                            taxTemplate?.let {
+                                                transactionDao.updateTemplate(it.copy(isRecurring = false))
+                                            }
                                         }
                                     }
                                 }
                             }
-                            showDeleteDialog = false
-                            transactionToDelete = null
+                            showStopDialog = false
+                            templateToStop = null
                         }
                     }
                 ) {
-                    Text("Eliminar")
+                    Text("Detener")
                 }
             },
             dismissButton = {
                 Button(
-                    onClick = { showDeleteDialog = false }
+                    onClick = { showStopDialog = false }
                 ) {
                     Text("Cancelar")
                 }
@@ -278,9 +220,9 @@ fun TransactionsScreen(
 
 @Preview(showBackground = true)
 @Composable
-fun TransactionsScreenPreview() {
+fun RecurringTransactionsScreenPreview() {
     EasyFinanceTheme {
-        TransactionsScreen(
+        RecurringTransactionsScreen(
             navController = rememberNavController(),
             transactionDao = object : TransactionDao {
                 override suspend fun insert(transaction: Transaction) {}
