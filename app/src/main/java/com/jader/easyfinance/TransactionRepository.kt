@@ -3,6 +3,7 @@ package com.jader.easyfinance
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.tasks.await
@@ -10,22 +11,32 @@ import java.util.Date
 
 class TransactionRepository {
     private val db = Firebase.firestore
-    private val transactionsCollection = db.collection("transactions")
+    private val auth = FirebaseAuth.getInstance()
+
+    // Obtener la colección de transacciones específica del usuario
+    private fun getUserTransactionsCollection() = auth.currentUser?.let { user ->
+        db.collection("users").document(user.uid).collection("transactions")
+    }
 
     // Insertar una transacción
     suspend fun insert(transaction: Transaction) {
+        val userCollection = getUserTransactionsCollection() ?: return
         val transactionMap = hashMapOf(
             "amount" to transaction.amount,
             "category" to transaction.category,
             "isIncome" to transaction.isIncome,
             "timestamp" to Date()
         )
-        transactionsCollection.add(transactionMap).await()
+        userCollection.add(transactionMap).await()
     }
 
-    // Obtener todas las transacciones como Flow
+    // Obtener todas las transacciones del usuario como Flow
     fun getAllTransactions(): Flow<List<Transaction>> = flow {
-        val snapshot = transactionsCollection
+        val userCollection = getUserTransactionsCollection() ?: run {
+            emit(emptyList())
+            return@flow
+        }
+        val snapshot = userCollection
             .orderBy("timestamp", Query.Direction.DESCENDING)
             .get()
             .await()

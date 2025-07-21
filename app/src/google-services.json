@@ -15,7 +15,15 @@
       },
       "oauth_client": [
         {
-          "client_id": "TU_CLIENT_ID.apps.googleusercontent.com",
+          "client_id": "405046173375-i7gk344vslt6go2cda3dpr36dbib0pmt.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.jader.easyfinance",
+            "certificate_hash": "3c46787be97f875321e50f220473759fac89cc5d"
+          }
+        },
+        {
+          "client_id": "405046173375-sn8oeabr74pi1m6elfbesettd0pn8aog.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
@@ -26,7 +34,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "405046173375-sn8oeabr74pi1m6elfbesettd0pn8aog.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
