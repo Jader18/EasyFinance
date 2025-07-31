@@ -1,17 +1,21 @@
 // importante importar --> import androidx.compose.runtime.getValue
 //importante importar --> import androidx.navigation.compose.rememberNavController
 
+
 package com.jader.easyfinance
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.core.app.ActivityCompat
 import androidx.compose.runtime.Composable
-import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.room.Room
+import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.jader.easyfinance.data.AppDatabase
@@ -27,21 +31,43 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Inicializar la base de datos con migración
+        // Solicitar permisos de almacenamiento para versiones < Android 13
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(
+                    Manifest.permission.READ_EXTERNAL_STORAGE,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                ),
+                101
+            )
+        }
+        // Solicitar permiso de notificaciones para Android 13+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                100
+            )
+        }
+
         val db = Room.databaseBuilder(
             applicationContext,
             AppDatabase::class.java,
             "easyfinance-db"
         )
-            .addMigrations(AppDatabase.MIGRATION_1_2)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
             .build()
 
-        // Configurar WorkManager para transacciones recurrentes
         val workRequest = PeriodicWorkRequestBuilder<RecurringTransactionWorker>(
             repeatInterval = 15,
             repeatIntervalTimeUnit = TimeUnit.MINUTES
         ).build()
-        WorkManager.getInstance(applicationContext).enqueue(workRequest)
+        WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
+            "recurring-transaction-work",
+            ExistingPeriodicWorkPolicy.KEEP,
+            workRequest
+        )
 
         setContent {
             EasyFinanceTheme {
@@ -64,10 +90,6 @@ fun AppNavigation(transactionDao: com.jader.easyfinance.data.TransactionDao) {
         composable("add_transaction/{transactionId}") { backStackEntry ->
             val transactionId = backStackEntry.arguments?.getString("transactionId")?.toIntOrNull()
             AddTransactionScreen(navController = navController, transactionDao = transactionDao, transactionId = transactionId)
-        }
-        composable("add_transaction_template/{transactionId}") { backStackEntry ->
-            val transactionId = backStackEntry.arguments?.getString("transactionId")?.toIntOrNull()
-            AddTransactionScreen(navController = navController, transactionDao = transactionDao, transactionId = transactionId, isTemplate = true)
         }
         composable("transactions") {
             TransactionsScreen(navController = navController, transactionDao = transactionDao)

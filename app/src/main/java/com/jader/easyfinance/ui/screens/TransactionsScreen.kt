@@ -36,17 +36,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import androidx.navigation.compose.rememberNavController
-import com.jader.easyfinance.data.RecurringTransactionTemplate
 import com.jader.easyfinance.data.Transaction
 import com.jader.easyfinance.data.TransactionDao
-import com.jader.easyfinance.ui.theme.EasyFinanceTheme
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import java.text.DecimalFormat
 import java.text.SimpleDateFormat
@@ -86,7 +80,7 @@ fun TransactionsScreen(
                 navigationIcon = {
                     IconButton(onClick = { navController.navigateUp() }) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Default.ArrowBack,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Volver"
                         )
                     }
@@ -246,7 +240,6 @@ fun TransactionsScreen(
                         coroutineScope.launch {
                             transactionToDelete?.let { transaction ->
                                 transactionDao.delete(transaction)
-                                // Si es Sueldo, eliminar la transacción de impuestos asociada
                                 if (transaction.isIncome && transaction.category == "Sueldo") {
                                     transaction.startDate?.let { startDate ->
                                         transaction.recurrenceType?.let { recurrenceType ->
@@ -272,30 +265,6 @@ fun TransactionsScreen(
                     Text("Cancelar")
                 }
             }
-        )
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun TransactionsScreenPreview() {
-    EasyFinanceTheme {
-        TransactionsScreen(
-            navController = rememberNavController(),
-            transactionDao = object : TransactionDao {
-                override suspend fun insert(transaction: Transaction) {}
-                override suspend fun insertTemplate(template: RecurringTransactionTemplate) {}
-                override suspend fun update(transaction: Transaction) {}
-                override suspend fun updateTemplate(template: RecurringTransactionTemplate) {}
-                override suspend fun delete(transaction: Transaction) {}
-                override suspend fun deleteTemplate(template: RecurringTransactionTemplate) {}
-                override fun getAllTransactions(): Flow<List<Transaction>> = emptyFlow()
-                override fun getRecurringTemplates(): Flow<List<RecurringTransactionTemplate>> = emptyFlow()
-                override fun getRecurringTransactions(): Flow<List<Transaction>> = emptyFlow()
-                override suspend fun getTaxTransaction(startDate: Long, recurrenceType: String?): Transaction? = null
-                override suspend fun getTaxTemplate(startDate: Long, recurrenceType: String?): RecurringTransactionTemplate? = null
-            },
-            modifier = Modifier.fillMaxSize()
         )
     }
 }

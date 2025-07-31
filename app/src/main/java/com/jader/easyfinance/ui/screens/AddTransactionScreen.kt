@@ -11,7 +11,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
@@ -21,10 +24,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,17 +36,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import androidx.navigation.compose.rememberNavController
 import com.jader.easyfinance.data.RecurringTransactionTemplate
 import com.jader.easyfinance.data.Transaction
 import com.jader.easyfinance.data.TransactionDao
-import com.jader.easyfinance.ui.theme.EasyFinanceTheme
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.text.DecimalFormat
@@ -83,9 +77,15 @@ fun AddTransactionScreen(
         listOf("Alimentos", "Transporte", "Entretenimiento", "Hogar", "Impuestos", "Otros")
     }
     val recurrenceTypes = listOf("Semanal", "Quincenal", "Mensual")
-    val datePickerState = rememberDatePickerState()
-    var existingTransaction by remember { mutableStateOf<Transaction?>(null) }
-    var existingTemplate by remember { mutableStateOf<RecurringTransactionTemplate?>(null) }
+    val datePickerState = remember {
+        androidx.compose.material3.DatePickerState(
+            initialSelectedDateMillis = startDate ?: System.currentTimeMillis(),
+            initialDisplayedMonthMillis = startDate ?: System.currentTimeMillis(),
+            yearRange = IntRange(2020, 2030),
+            initialDisplayMode = androidx.compose.material3.DisplayMode.Picker,
+            locale = Locale.getDefault()
+        )
+    }
     val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).apply {
         timeZone = TimeZone.getDefault()
     }
@@ -95,8 +95,7 @@ fun AddTransactionScreen(
         LaunchedEffect(transactionId, isTemplate) {
             if (isTemplate) {
                 val templates = transactionDao.getRecurringTemplates().first()
-                existingTemplate = templates.find { it.id == transactionId }
-                existingTemplate?.let { template ->
+                templates.find { it.id == transactionId }?.let { template ->
                     amount = DecimalFormat("#,##0.00").format(template.amount)
                     category = template.category
                     isIncome = template.isIncome
@@ -114,8 +113,7 @@ fun AddTransactionScreen(
                 }
             } else {
                 val transactions = transactionDao.getAllTransactions().first()
-                existingTransaction = transactions.find { it.id == transactionId }
-                existingTransaction?.let { transaction ->
+                transactions.find { it.id == transactionId }?.let { transaction ->
                     amount = DecimalFormat("#,##0.00").format(transaction.amount)
                     category = transaction.category
                     isIncome = transaction.isIncome
@@ -152,7 +150,7 @@ fun AddTransactionScreen(
                 navigationIcon = {
                     IconButton(onClick = { navController.navigateUp() }) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Default.ArrowBack,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Volver"
                         )
                     }
@@ -277,7 +275,6 @@ fun AddTransactionScreen(
                         confirmButton = {
                             Button(onClick = {
                                 datePickerState.selectedDateMillis?.let { millis ->
-                                    // Ajustar la fecha para que sea al inicio del día en la zona horaria local
                                     val calendar = Calendar.getInstance(TimeZone.getDefault()).apply {
                                         timeInMillis = millis
                                         set(Calendar.HOUR_OF_DAY, 0)
@@ -313,10 +310,9 @@ fun AddTransactionScreen(
                                 Toast.LENGTH_SHORT
                             ).show()
                         } else {
-                            val amountValue = amount.toDoubleOrNull()
+                            val amountValue = amount.replace(",", "").toDoubleOrNull()
                             if (amountValue != null) {
                                 coroutineScope.launch {
-                                    // Preparar transacción o plantilla
                                     val recurrenceTypeValue = if (isRecurring) {
                                         when (recurrenceType) {
                                             "Semanal" -> "WEEKLY"
@@ -340,7 +336,6 @@ fun AddTransactionScreen(
                                         } else {
                                             transactionDao.insertTemplate(template)
                                         }
-                                        // Si es Sueldo, gestionar plantilla de impuestos
                                         if (isIncome && category == "Sueldo") {
                                             val inss = amountValue * 0.07
                                             val periodsPerYear = when (recurrenceTypeValue) {
@@ -394,7 +389,6 @@ fun AddTransactionScreen(
                                             recurrenceType = recurrenceTypeValue,
                                             startDate = startDate
                                         )
-                                        // Si es recurrente, gestionar la plantilla
                                         if (isRecurring) {
                                             val template = RecurringTransactionTemplate(
                                                 id = transactionId ?: 0,
@@ -411,13 +405,11 @@ fun AddTransactionScreen(
                                                 transactionDao.insertTemplate(template)
                                             }
                                         }
-                                        // Si es edición, actualizar; si no, insertar
                                         if (transactionId != null) {
                                             transactionDao.update(transaction)
                                         } else {
                                             transactionDao.insert(transaction)
                                         }
-                                        // Si es Sueldo, gestionar transacción y plantilla de impuestos
                                         if (isIncome && category == "Sueldo") {
                                             val inss = amountValue * 0.07
                                             val periodsPerYear = when (recurrenceTypeValue) {
@@ -535,29 +527,5 @@ fun AddTransactionScreen(
                 Text(if (isTemplate) "Guardar Plantilla" else if (transactionId == null) "Guardar" else "Actualizar")
             }
         }
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun AddTransactionScreenPreview() {
-    EasyFinanceTheme {
-        AddTransactionScreen(
-            navController = rememberNavController(),
-            transactionDao = object : TransactionDao {
-                override suspend fun insert(transaction: Transaction) {}
-                override suspend fun insertTemplate(template: RecurringTransactionTemplate) {}
-                override suspend fun update(transaction: Transaction) {}
-                override suspend fun updateTemplate(template: RecurringTransactionTemplate) {}
-                override suspend fun delete(transaction: Transaction) {}
-                override suspend fun deleteTemplate(template: RecurringTransactionTemplate) {}
-                override fun getAllTransactions(): Flow<List<Transaction>> = emptyFlow()
-                override fun getRecurringTemplates(): Flow<List<RecurringTransactionTemplate>> = emptyFlow()
-                override fun getRecurringTransactions(): Flow<List<Transaction>> = emptyFlow()
-                override suspend fun getTaxTransaction(startDate: Long, recurrenceType: String?): Transaction? = null
-                override suspend fun getTaxTemplate(startDate: Long, recurrenceType: String?): RecurringTransactionTemplate? = null
-            },
-            modifier = Modifier.fillMaxSize()
-        )
     }
 }

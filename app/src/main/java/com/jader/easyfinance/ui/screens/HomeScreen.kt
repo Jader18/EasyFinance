@@ -1,5 +1,7 @@
 package com.jader.easyfinance.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,14 +15,17 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.jader.easyfinance.data.DataManager
 import com.jader.easyfinance.data.TransactionDao
-import com.jader.easyfinance.ui.theme.EasyFinanceTheme
+import kotlinx.coroutines.launch
 import java.text.DecimalFormat
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -35,6 +40,29 @@ fun HomeScreen(
     val totalExpenses = transactions.filter { !it.isIncome }.sumOf { it.amount }
     val balance = totalIncomes - totalExpenses
     val decimalFormat = DecimalFormat("C$ #,##0.00")
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    // MIME type más general para evitar archivos grayed out
+    val mimeTypes = arrayOf("text/*")
+
+    // Launcher para exportar CSV
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        uri?.let {
+            coroutineScope.launch {
+                DataManager.exportToCsv(context, transactionDao, it)
+            }
+        }
+    }
+
+    // Launcher para importar CSV
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let {
+            coroutineScope.launch {
+                DataManager.importFromCsv(context, transactionDao, it)
+            }
+        }
+    }
 
     Scaffold(
         modifier = modifier,
@@ -74,6 +102,22 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Ver Transacciones Recurrentes")
+            }
+            Button(
+                onClick = {
+                    exportLauncher.launch("easyfinance_export_${System.currentTimeMillis()}.csv")
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Exportar Datos")
+            }
+            Button(
+                onClick = {
+                    importLauncher.launch(mimeTypes)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Importar Datos")
             }
         }
     }

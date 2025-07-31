@@ -3,16 +3,17 @@ package com.jader.easyfinance.data
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TransactionDao {
-    @Insert
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(transaction: Transaction)
 
-    @Insert
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertTemplate(template: RecurringTransactionTemplate)
 
     @Update
@@ -41,4 +42,11 @@ interface TransactionDao {
 
     @Query("SELECT * FROM recurring_transaction_templates WHERE isIncome = 0 AND category = 'Impuestos' AND startDate = :startDate AND recurrenceType = :recurrenceType")
     suspend fun getTaxTemplate(startDate: Long, recurrenceType: String?): RecurringTransactionTemplate?
+
+    @Query("SELECT EXISTS(SELECT 1 FROM transactions WHERE startDate = :startDate AND category = :category AND recurrenceType = :recurrenceType)")
+    suspend fun existsByStartDateAndCategoryAndRecurrenceType(
+        startDate: Long,
+        category: String,
+        recurrenceType: String?
+    ): Boolean
 }
