@@ -43,10 +43,8 @@ fun HomeScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    // MIME type más general para evitar archivos grayed out
     val mimeTypes = arrayOf("text/*")
 
-    // Launcher para exportar CSV
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         uri?.let {
             coroutineScope.launch {
@@ -55,7 +53,6 @@ fun HomeScreen(
         }
     }
 
-    // Launcher para importar CSV
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
             coroutineScope.launch {
@@ -118,6 +115,14 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Importar Datos")
+            }
+
+            // NUEVO BOTÓN PARA NAVEGAR A PANTALLA DE GRÁFICOS
+            Button(
+                onClick = { navController.navigate("charts") },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Gráficos")
             }
         }
     }

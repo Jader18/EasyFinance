@@ -60,7 +60,11 @@ object DataManager {
                     BufferedReader(InputStreamReader(inputStream)).use { reader ->
                         var isTransactionSection = false
                         var isTemplateSection = false
-                        reader.lineSequence().toList().forEach { line ->
+
+                        val existingTransactions = transactionDao.getAllTransactions().first()
+                        val existingTemplates = transactionDao.getRecurringTemplates().first()
+
+                        reader.lineSequence().forEach { line ->
                             when (line.trim()) {
                                 "=== Transactions ===" -> {
                                     isTransactionSection = true
@@ -95,13 +99,18 @@ object DataManager {
                                                         recurrenceType = recurrenceType,
                                                         startDate = startDate
                                                     )
-                                                    if (id == 0 || !transactionDao.existsByStartDateAndCategoryAndRecurrenceType(
-                                                            startDate ?: 0L, category, recurrenceType
-                                                        )) {
-                                                        transactionDao.insert(transaction)
+
+                                                    if (id > 0) {
+                                                        val existing = existingTransactions.find { it.id == id }
+                                                        if (existing == null) {
+                                                            transactionDao.insert(transaction)
+                                                        } else {
+                                                            transactionDao.update(transaction)
+                                                        }
                                                     } else {
-                                                        transactionDao.update(transaction)
+                                                        transactionDao.insert(transaction)
                                                     }
+
                                                 } else if (isTemplateSection) {
                                                     val template = RecurringTransactionTemplate(
                                                         id = id,
@@ -112,16 +121,20 @@ object DataManager {
                                                         recurrenceType = recurrenceType,
                                                         startDate = startDate
                                                     )
-                                                    if (id == 0 || !transactionDao.existsByStartDateAndCategoryAndRecurrenceType(
-                                                            startDate ?: 0L, category, recurrenceType
-                                                        )) {
-                                                        transactionDao.insertTemplate(template)
+
+                                                    if (id > 0) {
+                                                        val existing = existingTemplates.find { it.id == id }
+                                                        if (existing == null) {
+                                                            transactionDao.insertTemplate(template)
+                                                        } else {
+                                                            transactionDao.updateTemplate(template)
+                                                        }
                                                     } else {
-                                                        transactionDao.updateTemplate(template)
+                                                        transactionDao.insertTemplate(template)
                                                     }
                                                 }
-                                            } catch (e: Exception) {
-                                                // Ignorar líneas mal formadas
+                                            } catch (_: Exception) {
+                                                // Ignorar línea mal formada
                                             }
                                         }
                                     }

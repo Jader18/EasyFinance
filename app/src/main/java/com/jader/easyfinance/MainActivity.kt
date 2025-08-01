@@ -1,7 +1,3 @@
-// importante importar --> import androidx.compose.runtime.getValue
-//importante importar --> import androidx.navigation.compose.rememberNavController
-
-
 package com.jader.easyfinance
 
 import android.Manifest
@@ -21,6 +17,7 @@ import androidx.work.WorkManager
 import com.jader.easyfinance.data.AppDatabase
 import com.jader.easyfinance.data.RecurringTransactionWorker
 import com.jader.easyfinance.ui.screens.AddTransactionScreen
+import com.jader.easyfinance.ui.screens.ChartsScreen
 import com.jader.easyfinance.ui.screens.HomeScreen
 import com.jader.easyfinance.ui.screens.RecurringTransactionsScreen
 import com.jader.easyfinance.ui.screens.TransactionsScreen
@@ -96,6 +93,14 @@ fun AppNavigation(transactionDao: com.jader.easyfinance.data.TransactionDao) {
         }
         composable("recurring_transactions") {
             RecurringTransactionsScreen(navController = navController, transactionDao = transactionDao)
+        }
+        composable("add_recurring_transaction/{templateId}") { backStackEntry ->
+            val templateId = backStackEntry.arguments?.getString("templateId")?.toIntOrNull()
+            AddTransactionScreen(navController = navController, transactionDao = transactionDao, transactionId = templateId, isTemplate = true)
+        }
+        // NUEVA ruta para pantalla de gráficos
+        composable("charts") {
+            ChartsScreen(navController = navController, transactionDao = transactionDao)
         }
     }
 }
