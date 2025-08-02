@@ -226,6 +226,48 @@ fun AddTransactionScreen(
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             }
+            Button(
+                onClick = { showDatePicker = true },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = startDate?.let {
+                        val formattedDate = dateFormat.format(Date(it))
+                        Log.d("DateDebug", "Displayed startDate: $formattedDate, Raw: $it, TimeZone: ${TimeZone.getDefault().id}")
+                        formattedDate
+                    } ?: if (isRecurring) "Seleccionar Fecha de Inicio" else "Seleccionar Fecha de Transacción"
+                )
+            }
+            if (showDatePicker) {
+                DatePickerDialog(
+                    onDismissRequest = { showDatePicker = false },
+                    confirmButton = {
+                        Button(onClick = {
+                            datePickerState.selectedDateMillis?.let { millis ->
+                                val calendar = Calendar.getInstance(TimeZone.getDefault()).apply {
+                                    timeInMillis = millis
+                                    set(Calendar.HOUR_OF_DAY, 0)
+                                    set(Calendar.MINUTE, 0)
+                                    set(Calendar.SECOND, 0)
+                                    set(Calendar.MILLISECOND, 0)
+                                }
+                                startDate = calendar.timeInMillis
+                                Log.d("DateDebug", "Selected date: ${dateFormat.format(Date(startDate!!))}, Raw: $startDate, TimeZone: ${TimeZone.getDefault().id}")
+                            }
+                            showDatePicker = false
+                        }) {
+                            Text("Aceptar")
+                        }
+                    },
+                    dismissButton = {
+                        Button(onClick = { showDatePicker = false }) {
+                            Text("Cancelar")
+                        }
+                    }
+                ) {
+                    DatePicker(state = datePickerState)
+                }
+            }
             if (isRecurring) {
                 ExposedDropdownMenuBox(
                     expanded = isRecurrenceDropdownExpanded,
@@ -255,48 +297,6 @@ fun AddTransactionScreen(
                                 }
                             )
                         }
-                    }
-                }
-                Button(
-                    onClick = { showDatePicker = true },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = startDate?.let {
-                            val formattedDate = dateFormat.format(Date(it))
-                            Log.d("DateDebug", "Displayed startDate: $formattedDate, Raw: $it, TimeZone: ${TimeZone.getDefault().id}")
-                            formattedDate
-                        } ?: "Seleccionar Fecha de Inicio"
-                    )
-                }
-                if (showDatePicker) {
-                    DatePickerDialog(
-                        onDismissRequest = { showDatePicker = false },
-                        confirmButton = {
-                            Button(onClick = {
-                                datePickerState.selectedDateMillis?.let { millis ->
-                                    val calendar = Calendar.getInstance(TimeZone.getDefault()).apply {
-                                        timeInMillis = millis
-                                        set(Calendar.HOUR_OF_DAY, 0)
-                                        set(Calendar.MINUTE, 0)
-                                        set(Calendar.SECOND, 0)
-                                        set(Calendar.MILLISECOND, 0)
-                                    }
-                                    startDate = calendar.timeInMillis
-                                    Log.d("DateDebug", "Selected date: ${dateFormat.format(Date(startDate!!))}, Raw: $startDate, TimeZone: ${TimeZone.getDefault().id}")
-                                }
-                                showDatePicker = false
-                            }) {
-                                Text("Aceptar")
-                            }
-                        },
-                        dismissButton = {
-                            Button(onClick = { showDatePicker = false }) {
-                                Text("Cancelar")
-                            }
-                        }
-                    ) {
-                        DatePicker(state = datePickerState)
                     }
                 }
             }

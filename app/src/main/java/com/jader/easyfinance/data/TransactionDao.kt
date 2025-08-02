@@ -43,7 +43,13 @@ interface TransactionDao {
     @Query("SELECT * FROM recurring_transaction_templates WHERE isIncome = 0 AND category = 'Impuestos' AND startDate = :startDate AND recurrenceType = :recurrenceType")
     suspend fun getTaxTemplate(startDate: Long, recurrenceType: String?): RecurringTransactionTemplate?
 
-    @Query("SELECT EXISTS(SELECT 1 FROM transactions WHERE startDate = :startDate AND category = :category AND recurrenceType = :recurrenceType)")
+    @Query("""
+        SELECT EXISTS(
+            SELECT 1 FROM transactions 
+            WHERE (startDate = :startDate AND category = :category AND (recurrenceType = :recurrenceType OR recurrenceType IS NULL))
+            AND (isRecurring = CASE WHEN :recurrenceType IS NULL THEN 0 ELSE 1 END)
+        )
+    """)
     suspend fun existsByStartDateAndCategoryAndRecurrenceType(
         startDate: Long,
         category: String,

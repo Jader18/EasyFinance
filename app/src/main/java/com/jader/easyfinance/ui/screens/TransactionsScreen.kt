@@ -181,6 +181,12 @@ fun TransactionsScreen(
                                         text = "Categoría: ${transaction.category}",
                                         fontSize = 14.sp
                                     )
+                                    transaction.startDate?.let {
+                                        Text(
+                                            text = if (transaction.isRecurring) "Inicio: ${dateFormat.format(Date(it))}" else "Fecha: ${dateFormat.format(Date(it))}",
+                                            fontSize = 14.sp
+                                        )
+                                    }
                                     if (transaction.isRecurring) {
                                         Text(
                                             text = "Recurrente: ${
@@ -193,12 +199,6 @@ fun TransactionsScreen(
                                             }",
                                             fontSize = 14.sp
                                         )
-                                        transaction.startDate?.let {
-                                            Text(
-                                                text = "Inicio: ${dateFormat.format(Date(it))}",
-                                                fontSize = 14.sp
-                                            )
-                                        }
                                     }
                                 }
                                 Row {
