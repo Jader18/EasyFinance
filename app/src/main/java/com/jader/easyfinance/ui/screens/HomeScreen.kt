@@ -5,11 +5,21 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -65,11 +75,9 @@ fun HomeScreen(
     val totalIncomes: Double = transactions.value
         .filter { it.isIncome }
         .sumOf { it.amount }
-
     val totalExpenses: Double = transactions.value
         .filter { !it.isIncome }
         .sumOf { it.amount }
-
     val balance: Double = totalIncomes - totalExpenses
     val decimalFormat = DecimalFormat("C$ #,##0.00")
     val context = LocalContext.current
@@ -101,77 +109,82 @@ fun HomeScreen(
             )
         }
     ) { innerPadding ->
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                text = "Balance: ${decimalFormat.format(balance)}",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "Total Ingresos: ${decimalFormat.format(totalIncomes)}",
-                fontSize = 18.sp
-            )
-            Text(
-                text = "Total Gastos: ${decimalFormat.format(totalExpenses)}",
-                fontSize = 18.sp
-            )
-            Button(
-                onClick = { navController.navigate("add_transaction") },
-                modifier = Modifier.fillMaxWidth()
+            NavigationRail(
+                modifier = Modifier.fillMaxHeight()
             ) {
-                Text("Agregar Transacción")
-            }
-            Button(
-                onClick = { navController.navigate("transactions") },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Ver Transacciones")
-            }
-            Button(
-                onClick = { navController.navigate("recurring_transactions") },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Ver Transacciones Recurrentes")
-            }
-            Button(
-                onClick = {
-                    exportLauncher.launch("easyfinance_export_${System.currentTimeMillis()}.csv")
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Exportar Datos")
-            }
-            Button(
-                onClick = {
-                    importLauncher.launch(mimeTypes)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Importar Datos")
-            }
-            Button(
-                onClick = { navController.navigate("charts") },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Gráficos")
-            }
-            Button(
-                onClick = {
-                    FirebaseAuth.getInstance().signOut()
-                    navController.navigate("login") {
-                        popUpTo("home") { inclusive = true }
+                NavigationRailItem(
+                    icon = { Icon(Icons.Filled.Add, contentDescription = "Agregar Transacción") },
+                    label = { Text("Agregar Transacción") },
+                    selected = false,
+                    onClick = { navController.navigate("add_transaction") }
+                )
+                NavigationRailItem(
+                    icon = { Icon(Icons.Filled.List, contentDescription = "Ver Transacciones") },
+                    label = { Text("Ver Transacciones") },
+                    selected = false,
+                    onClick = { navController.navigate("transactions") }
+                )
+                NavigationRailItem(
+                    icon = { Icon(Icons.Filled.List, contentDescription = "Ver Transacciones Recurrentes") },
+                    label = { Text("Transacciones Recurrentes") },
+                    selected = false,
+                    onClick = { navController.navigate("recurring_transactions") }
+                )
+                NavigationRailItem(
+                    icon = { Icon(Icons.Filled.FileDownload, contentDescription = "Exportar Datos") },
+                    label = { Text("Exportar Datos") },
+                    selected = false,
+                    onClick = { exportLauncher.launch("easyfinance_export_${System.currentTimeMillis()}.csv") }
+                )
+                NavigationRailItem(
+                    icon = { Icon(Icons.Filled.FileUpload, contentDescription = "Importar Datos") },
+                    label = { Text("Importar Datos") },
+                    selected = false,
+                    onClick = { importLauncher.launch(mimeTypes) }
+                )
+                NavigationRailItem(
+                    icon = { Icon(Icons.Filled.BarChart, contentDescription = "Gráficos") },
+                    label = { Text("Gráficos") },
+                    selected = false,
+                    onClick = { navController.navigate("charts") }
+                )
+                NavigationRailItem(
+                    icon = { Icon(Icons.Filled.Logout, contentDescription = "Cerrar Sesión") },
+                    label = { Text("Cerrar Sesión") },
+                    selected = false,
+                    onClick = {
+                        FirebaseAuth.getInstance().signOut()
+                        navController.navigate("login") {
+                            popUpTo("home") { inclusive = true }
+                        }
                     }
-                },
-                modifier = Modifier.fillMaxWidth()
+                )
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("Cerrar Sesión")
+                Text(
+                    text = "Balance: ${decimalFormat.format(balance)}",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Total Ingresos: ${decimalFormat.format(totalIncomes)}",
+                    fontSize = 18.sp
+                )
+                Text(
+                    text = "Total Gastos: ${decimalFormat.format(totalExpenses)}",
+                    fontSize = 18.sp
+                )
             }
         }
     }

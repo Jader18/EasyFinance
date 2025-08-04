@@ -104,5 +104,6 @@ fun AppNavigation() {
         composable("charts") {
             ChartsScreen(navController = navController)
         }
+
     }
 }
