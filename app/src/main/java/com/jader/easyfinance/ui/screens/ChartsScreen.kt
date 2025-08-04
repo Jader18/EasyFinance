@@ -1,11 +1,25 @@
 package com.jader.easyfinance.ui.screens
 
+import android.util.Log
 import android.view.ViewGroup
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -15,34 +29,72 @@ import androidx.navigation.NavController
 import com.github.mikephil.charting.charts.CombinedChart
 import com.github.mikephil.charting.components.Legend
 import com.github.mikephil.charting.components.XAxis
-import com.github.mikephil.charting.data.*
+import com.github.mikephil.charting.data.BarData
+import com.github.mikephil.charting.data.BarDataSet
+import com.github.mikephil.charting.data.BarEntry
+import com.github.mikephil.charting.data.CombinedData
+import com.github.mikephil.charting.data.Entry
+import com.github.mikephil.charting.data.LineData
+import com.github.mikephil.charting.data.LineDataSet
+import com.github.mikephil.charting.data.PieData
+import com.github.mikephil.charting.data.PieDataSet
+import com.github.mikephil.charting.data.PieEntry
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.firestore.ktx.toObjects
+import com.google.firebase.ktx.Firebase
 import com.jader.easyfinance.data.Transaction
-import com.jader.easyfinance.data.TransactionDao
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChartsScreen(
     navController: NavController,
-    transactionDao: TransactionDao,
     modifier: Modifier = Modifier
 ) {
-    val transactions by transactionDao.getAllTransactions().collectAsState(initial = emptyList())
+    val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+    val db = Firebase.firestore
+    val transactionsFlow: Flow<List<Transaction>> = callbackFlow {
+        val listener = db.collection("users").document(userId)
+            .collection("transactions")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e("FirestoreError", "Error fetching transactions: ${error.message}")
+                    return@addSnapshotListener
+                }
+                snapshot?.let {
+                    trySend(it.toObjects<Transaction>()).isSuccess
+                }
+            }
+        awaitClose { listener.remove() }
+    }
+    val transactions: State<List<Transaction>> = transactionsFlow.collectAsState(initial = emptyList())
 
-    val incomeTotals = transactions
-        .filter { it.isIncome }
-        .groupBy { it.category }
-        .mapValues { entry -> entry.value.sumOf { it.amount }.toFloat() }
+    // Calculate income totals by category
+    val incomeTotals: Map<String, Float> = transactions.value
+        .filter { transaction: Transaction -> transaction.isIncome }
+        .groupBy { transaction: Transaction -> transaction.category }
+        .mapValues { entry: Map.Entry<String, List<Transaction>> ->
+            entry.value.sumOf { transaction: Transaction -> transaction.amount.toDouble() }.toFloat()
+        }
 
-    val expenseTotals = transactions
-        .filter { !it.isIncome }
-        .groupBy { it.category }
-        .mapValues { entry -> entry.value.sumOf { it.amount }.toFloat() }
+    // Calculate expense totals by category
+    val expenseTotals: Map<String, Float> = transactions.value
+        .filter { transaction: Transaction -> !transaction.isIncome }
+        .groupBy { transaction: Transaction -> transaction.category }
+        .mapValues { entry: Map.Entry<String, List<Transaction>> ->
+            entry.value.sumOf { transaction: Transaction -> transaction.amount.toDouble() }.toFloat()
+        }
 
     val (quincenaLabels, incomesQuincenales, expensesQuincenales) = remember(transactions) {
-        calculateQuincenalTotals(transactions)
+        calculateQuincenalTotals(transactions.value)
     }
 
     Scaffold(
@@ -63,15 +115,15 @@ fun ChartsScreen(
         ) {
             Text(
                 text = "Distribución de Ingresos",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground
+                style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onBackground
             )
             PieChartView(dataMap = incomeTotals)
 
             Text(
                 text = "Distribución de Gastos",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground
+                style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onBackground
             )
             PieChartView(dataMap = expenseTotals)
 
@@ -79,8 +131,8 @@ fun ChartsScreen(
 
             Text(
                 text = "Comparación Quincenal Gastos vs Ingresos",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground
+                style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onBackground
             )
             BarComparisonChart(
                 incomes = incomesQuincenales,
@@ -122,11 +174,11 @@ fun calculateQuincenalTotals(
         end: Calendar,
         isIncome: Boolean
     ): Float {
-        return transactions.filter { t ->
-            val tDateMillis = t.startDate ?: return@filter false
+        return transactions.filter { transaction ->
+            val tDateMillis = transaction.startDate ?: return@filter false
             val tDate = Date(tDateMillis)
-            !tDate.before(start.time) && tDate.before(end.time) && t.isIncome == isIncome
-        }.sumOf { it.amount.toDouble() }.toFloat()
+            !tDate.before(start.time) && tDate.before(end.time) && transaction.isIncome == isIncome
+        }.sumOf { transaction -> transaction.amount.toDouble() }.toFloat()
     }
 
     val quincenaPasadaEnd = quincenaPasadaStart.clone() as Calendar
@@ -221,7 +273,6 @@ fun BarComparisonChart(
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
                 description.isEnabled = false
-
                 legend.apply {
                     isEnabled = true
                     verticalAlignment = Legend.LegendVerticalAlignment.TOP
@@ -229,7 +280,6 @@ fun BarComparisonChart(
                     textColor = android.graphics.Color.WHITE
                     textSize = 14f
                 }
-
                 axisRight.isEnabled = false
                 axisLeft.textColor = android.graphics.Color.WHITE
                 xAxis.apply {
@@ -275,7 +325,6 @@ fun BarComparisonChart(
                 setData(barData)
                 setData(lineData)
             }
-
             chart.invalidate()
         }
     )

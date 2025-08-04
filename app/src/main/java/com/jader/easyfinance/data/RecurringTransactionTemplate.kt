@@ -1,15 +1,13 @@
 package com.jader.easyfinance.data
 
-import androidx.room.Entity
-import androidx.room.PrimaryKey
+import com.google.firebase.firestore.PropertyName
 
-@Entity(tableName = "recurring_transaction_templates")
 data class RecurringTransactionTemplate(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val amount: Double,
-    val category: String,
-    val isIncome: Boolean,
-    val isRecurring: Boolean,
-    val recurrenceType: String?,
-    val startDate: Long?
+    val id: String = "",
+    val amount: Double = 0.0,
+    val category: String = "",
+    @PropertyName("income") val isIncome: Boolean = false,
+    @PropertyName("recurring") val isRecurring: Boolean = false,
+    val recurrenceType: String? = null,
+    val startDate: Long? = null
 )

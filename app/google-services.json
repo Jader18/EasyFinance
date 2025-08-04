@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "405046173375",
+    "firebase_url": "https://easyfinance-aa2f0-default-rtdb.firebaseio.com",
+    "project_id": "easyfinance-aa2f0",
+    "storage_bucket": "easyfinance-aa2f0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:405046173375:android:6f777589212b271cef300a",
+        "android_client_info": {
+          "package_name": "com.jader.easyfinance"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "405046173375-i7gk344vslt6go2cda3dpr36dbib0pmt.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.jader.easyfinance",
+            "certificate_hash": "3c46787be97f875321e50f220473759fac89cc5d"
+          }
+        },
+        {
+          "client_id": "405046173375-sn8oeabr74pi1m6elfbesettd0pn8aog.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDuEpjzE8uc2ZwyZpejDpsk3wjd3cYypIM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "405046173375-sn8oeabr74pi1m6elfbesettd0pn8aog.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

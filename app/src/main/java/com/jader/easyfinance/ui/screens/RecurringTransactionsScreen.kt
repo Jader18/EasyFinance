@@ -1,5 +1,6 @@
 package com.jader.easyfinance.ui.screens
 
+import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,9 +37,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.firestore.ktx.toObjects
+import com.google.firebase.ktx.Firebase
 import com.jader.easyfinance.data.RecurringTransactionTemplate
-import com.jader.easyfinance.data.TransactionDao
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import java.text.DecimalFormat
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -49,21 +57,33 @@ import java.util.TimeZone
 @Composable
 fun RecurringTransactionsScreen(
     navController: NavController,
-    transactionDao: TransactionDao,
     modifier: Modifier = Modifier
 ) {
     var selectedFilter by remember { mutableIntStateOf(0) } // 0 = Todos, 1 = Ingresos, 2 = Gastos
     var showDeleteDialog by remember { mutableStateOf(false) }
     var templateToDelete by remember { mutableStateOf<RecurringTransactionTemplate?>(null) }
-    val templates by transactionDao.getRecurringTemplates().collectAsState(initial = emptyList())
-
-    // Aplicar filtro según selección
+    val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+    val db = Firebase.firestore
+    val templatesFlow: Flow<List<RecurringTransactionTemplate>> = callbackFlow {
+        val listener = db.collection("users").document(userId)
+            .collection("recurring_templates")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e("FirestoreError", "Error fetching templates: ${error.message}")
+                    return@addSnapshotListener
+                }
+                snapshot?.let {
+                    trySend(it.toObjects<RecurringTransactionTemplate>()).isSuccess
+                }
+            }
+        awaitClose { listener.remove() }
+    }
+    val templates by templatesFlow.collectAsState(initial = emptyList())
     val filteredTemplates = when (selectedFilter) {
         1 -> templates.filter { it.isIncome }
         2 -> templates.filter { !it.isIncome }
         else -> templates
     }
-
     val decimalFormat = DecimalFormat("C$ #,##0.00")
     val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).apply {
         timeZone = TimeZone.getDefault()
@@ -93,7 +113,6 @@ fun RecurringTransactionsScreen(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Filtro tipo segmented buttons
             SingleChoiceSegmentedButtonRow(
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -119,7 +138,6 @@ fun RecurringTransactionsScreen(
                     Text("Gastos")
                 }
             }
-
             if (filteredTemplates.isEmpty()) {
                 Column(
                     modifier = Modifier.fillMaxSize(),
@@ -127,7 +145,7 @@ fun RecurringTransactionsScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = when(selectedFilter) {
+                        text = when (selectedFilter) {
                             1 -> "No hay ingresos recurrentes"
                             2 -> "No hay gastos recurrentes"
                             else -> "No hay transacciones recurrentes"
@@ -210,7 +228,23 @@ fun RecurringTransactionsScreen(
             confirmButton = {
                 Button(onClick = {
                     coroutineScope.launch {
-                        templateToDelete?.let { transactionDao.deleteTemplate(it) }
+                        templateToDelete?.let { template ->
+                            // Delete the template
+                            db.collection("users").document(userId).collection("recurring_templates")
+                                .document(template.id).delete().await()
+                            // If it's a Sueldo template, delete the associated tax template
+                            if (template.isIncome && template.category == "Sueldo" && template.startDate != null) {
+                                val taxTemplate = db.collection("users").document(userId).collection("recurring_templates")
+                                    .whereEqualTo("category", "Impuestos")
+                                    .whereEqualTo("recurrenceType", template.recurrenceType)
+                                    .whereEqualTo("startDate", template.startDate)
+                                    .get().await()
+                                taxTemplate.documents.forEach { taxDoc ->
+                                    db.collection("users").document(userId).collection("recurring_templates")
+                                        .document(taxDoc.id).delete().await()
+                                }
+                            }
+                        }
                         showDeleteDialog = false
                         templateToDelete = null
                     }

@@ -1,5 +1,6 @@
 package com.jader.easyfinance.ui.screens
 
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +14,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
@@ -23,8 +25,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.firestore.ktx.toObjects
+import com.google.firebase.ktx.Firebase
 import com.jader.easyfinance.data.DataManager
-import com.jader.easyfinance.data.TransactionDao
+import com.jader.easyfinance.data.Transaction
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
 import java.text.DecimalFormat
 
@@ -32,13 +41,36 @@ import java.text.DecimalFormat
 @Composable
 fun HomeScreen(
     navController: NavController,
-    transactionDao: TransactionDao,
     modifier: Modifier = Modifier
 ) {
-    val transactions by transactionDao.getAllTransactions().collectAsState(initial = emptyList())
-    val totalIncomes = transactions.filter { it.isIncome }.sumOf { it.amount }
-    val totalExpenses = transactions.filter { !it.isIncome }.sumOf { it.amount }
-    val balance = totalIncomes - totalExpenses
+    val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+    val db = Firebase.firestore
+    val transactionsFlow: Flow<List<Transaction>> = callbackFlow {
+        val listener = db.collection("users").document(userId)
+            .collection("transactions")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e("FirestoreError", "Error fetching transactions: ${error.message}")
+                    return@addSnapshotListener
+                }
+                snapshot?.let {
+                    val transactions = it.toObjects<Transaction>()
+                    Log.d("FirestoreFetch", "HomeScreen fetched transactions: $transactions")
+                    trySend(transactions).isSuccess
+                }
+            }
+        awaitClose { listener.remove() }
+    }
+    val transactions: State<List<Transaction>> = transactionsFlow.collectAsState(initial = emptyList())
+    val totalIncomes: Double = transactions.value
+        .filter { it.isIncome }
+        .sumOf { it.amount }
+
+    val totalExpenses: Double = transactions.value
+        .filter { !it.isIncome }
+        .sumOf { it.amount }
+
+    val balance: Double = totalIncomes - totalExpenses
     val decimalFormat = DecimalFormat("C$ #,##0.00")
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -48,7 +80,7 @@ fun HomeScreen(
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         uri?.let {
             coroutineScope.launch {
-                DataManager.exportToCsv(context, transactionDao, it)
+                DataManager.exportToCsv(context, it)
             }
         }
     }
@@ -56,7 +88,7 @@ fun HomeScreen(
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
             coroutineScope.launch {
-                DataManager.importFromCsv(context, transactionDao, it)
+                DataManager.importFromCsv(context, it)
             }
         }
     }
@@ -81,6 +113,14 @@ fun HomeScreen(
                 text = "Balance: ${decimalFormat.format(balance)}",
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "Total Ingresos: ${decimalFormat.format(totalIncomes)}",
+                fontSize = 18.sp
+            )
+            Text(
+                text = "Total Gastos: ${decimalFormat.format(totalExpenses)}",
+                fontSize = 18.sp
             )
             Button(
                 onClick = { navController.navigate("add_transaction") },
@@ -116,13 +156,22 @@ fun HomeScreen(
             ) {
                 Text("Importar Datos")
             }
-
-            // NUEVO BOTÓN PARA NAVEGAR A PANTALLA DE GRÁFICOS
             Button(
                 onClick = { navController.navigate("charts") },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Gráficos")
+            }
+            Button(
+                onClick = {
+                    FirebaseAuth.getInstance().signOut()
+                    navController.navigate("login") {
+                        popUpTo("home") { inclusive = true }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Cerrar Sesión")
             }
         }
     }
