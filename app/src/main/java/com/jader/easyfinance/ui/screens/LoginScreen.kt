@@ -109,13 +109,13 @@ fun LoginScreen(navController: NavController) {
             },
             enabled = !isLoading,
             modifier = Modifier
-                .width(280.dp) // Ancho fijo para mejor apariencia
+                .width(280.dp)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
             ) {
-                // Icono de Google
+
                 Image(
                     painter = painterResource(id = R.drawable.ic_google_logo), // Necesitarás añadir este drawable
                     contentDescription = "Google Logo",
@@ -129,7 +129,6 @@ fun LoginScreen(navController: NavController) {
             }
         }
 
-        // Texto de términos y condiciones (opcional)
         Text(
             text = "Al continuar, aceptas nuestros Términos y Condiciones >:D",
             fontSize = 12.sp,

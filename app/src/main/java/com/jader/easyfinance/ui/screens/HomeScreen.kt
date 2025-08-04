@@ -3,12 +3,13 @@ package com.jader.easyfinance.ui.screens
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
@@ -16,13 +17,18 @@ import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
@@ -31,6 +37,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,6 +46,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.firestore.ktx.toObjects
 import com.google.firebase.ktx.Firebase
+import com.jader.easyfinance.R
 import com.jader.easyfinance.data.DataManager
 import com.jader.easyfinance.data.Transaction
 import kotlinx.coroutines.channels.awaitClose
@@ -82,6 +90,7 @@ fun HomeScreen(
     val decimalFormat = DecimalFormat("C$ #,##0.00")
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
 
     val mimeTypes = arrayOf("text/*")
 
@@ -101,63 +110,82 @@ fun HomeScreen(
         }
     }
 
-    Scaffold(
-        modifier = modifier,
-        topBar = {
-            TopAppBar(
-                title = { Text("Easy Finance") }
-            )
-        }
-    ) { innerPadding ->
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            NavigationRail(
-                modifier = Modifier.fillMaxHeight()
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surface) // Set background color
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                NavigationRailItem(
+                Text(
+                    text = "MENU",
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                NavigationDrawerItem(
                     icon = { Icon(Icons.Filled.Add, contentDescription = "Agregar Transacción") },
                     label = { Text("Agregar Transacción") },
                     selected = false,
-                    onClick = { navController.navigate("add_transaction") }
+                    onClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        navController.navigate("add_transaction")
+                    }
                 )
-                NavigationRailItem(
+                NavigationDrawerItem(
                     icon = { Icon(Icons.Filled.List, contentDescription = "Ver Transacciones") },
                     label = { Text("Ver Transacciones") },
                     selected = false,
-                    onClick = { navController.navigate("transactions") }
+                    onClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        navController.navigate("transactions")
+                    }
                 )
-                NavigationRailItem(
+                NavigationDrawerItem(
                     icon = { Icon(Icons.Filled.List, contentDescription = "Ver Transacciones Recurrentes") },
                     label = { Text("Transacciones Recurrentes") },
                     selected = false,
-                    onClick = { navController.navigate("recurring_transactions") }
+                    onClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        navController.navigate("recurring_transactions")
+                    }
                 )
-                NavigationRailItem(
+                NavigationDrawerItem(
                     icon = { Icon(Icons.Filled.FileDownload, contentDescription = "Exportar Datos") },
                     label = { Text("Exportar Datos") },
                     selected = false,
-                    onClick = { exportLauncher.launch("easyfinance_export_${System.currentTimeMillis()}.csv") }
+                    onClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        exportLauncher.launch("easyfinance_export_${System.currentTimeMillis()}.csv")
+                    }
                 )
-                NavigationRailItem(
+                NavigationDrawerItem(
                     icon = { Icon(Icons.Filled.FileUpload, contentDescription = "Importar Datos") },
                     label = { Text("Importar Datos") },
                     selected = false,
-                    onClick = { importLauncher.launch(mimeTypes) }
+                    onClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        importLauncher.launch(mimeTypes)
+                    }
                 )
-                NavigationRailItem(
+                NavigationDrawerItem(
                     icon = { Icon(Icons.Filled.BarChart, contentDescription = "Gráficos") },
                     label = { Text("Gráficos") },
                     selected = false,
-                    onClick = { navController.navigate("charts") }
+                    onClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        navController.navigate("charts")
+                    }
                 )
-                NavigationRailItem(
+                NavigationDrawerItem(
                     icon = { Icon(Icons.Filled.Logout, contentDescription = "Cerrar Sesión") },
                     label = { Text("Cerrar Sesión") },
                     selected = false,
                     onClick = {
+                        coroutineScope.launch { drawerState.close() }
                         FirebaseAuth.getInstance().signOut()
                         navController.navigate("login") {
                             popUpTo("home") { inclusive = true }
@@ -165,13 +193,36 @@ fun HomeScreen(
                     }
                 )
             }
+        }
+    ) {
+        Scaffold(
+            modifier = modifier,
+            topBar = {
+                TopAppBar(
+                    title = { Text("Easy Finance") },
+                    navigationIcon = {
+                        IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) {
+                            Icon(Icons.Filled.Menu, contentDescription = "Abrir Menú")
+                        }
+                    }
+                )
+            }
+        ) { innerPadding ->
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .padding(innerPadding)
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                Image(
+                    painter = painterResource(id = R.drawable.nobglogo),
+                    contentDescription = "Logo de la app",
+                    modifier = Modifier
+                        .size(350.dp)
+                        .padding(bottom = 32.dp)
+                )
                 Text(
                     text = "Balance: ${decimalFormat.format(balance)}",
                     fontSize = 24.sp,
@@ -185,6 +236,7 @@ fun HomeScreen(
                     text = "Total Gastos: ${decimalFormat.format(totalExpenses)}",
                     fontSize = 18.sp
                 )
+
             }
         }
     }
