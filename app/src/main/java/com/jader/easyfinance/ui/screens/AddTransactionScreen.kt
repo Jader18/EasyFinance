@@ -29,8 +29,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -39,11 +39,13 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.ktx.Firebase
 import com.jader.easyfinance.data.RecurringTransactionTemplate
 import com.jader.easyfinance.data.Transaction
-import com.jader.easyfinance.data.TransactionDao
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import java.text.DecimalFormat
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -55,22 +57,23 @@ import java.util.TimeZone
 @Composable
 fun AddTransactionScreen(
     navController: NavController,
-    transactionDao: TransactionDao,
-    transactionId: Int? = null,
+    transactionId: String? = null,
     isTemplate: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var amount by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("") }
     var isIncome by remember { mutableStateOf(false) }
-    var isRecurring by remember { mutableStateOf(false) }
+    var isRecurring by remember { mutableStateOf(isTemplate) } // Default to isTemplate for recurring templates
     var recurrenceType by remember { mutableStateOf("") }
     var startDate by remember { mutableStateOf<Long?>(null) }
-    var isDropdownExpanded by remember { mutableStateOf(false) }
+    var isTypeDropdownExpanded by remember { mutableStateOf(false) }
+    var isCategoryDropdownExpanded by remember { mutableStateOf(false) }
     var isRecurrenceDropdownExpanded by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val typeOptions = listOf("Ingreso", "Gasto")
     val categories = if (isIncome) {
         listOf("Sueldo", "Otros")
     } else {
@@ -89,58 +92,62 @@ fun AddTransactionScreen(
     val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).apply {
         timeZone = TimeZone.getDefault()
     }
+    val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+    val db = Firebase.firestore
 
-    // Cargar datos existentes si se pasa un transactionId
-    if (transactionId != null) {
-        LaunchedEffect(transactionId, isTemplate) {
-            if (isTemplate) {
-                val templates = transactionDao.getRecurringTemplates().first()
-                templates.find { it.id == transactionId }?.let { template ->
-                    amount = DecimalFormat("#,##0.00").format(template.amount)
-                    category = template.category
-                    isIncome = template.isIncome
-                    isRecurring = template.isRecurring
-                    recurrenceType = when (template.recurrenceType) {
-                        "WEEKLY" -> "Semanal"
-                        "BIWEEKLY" -> "Quincenal"
-                        "MONTHLY" -> "Mensual"
-                        else -> ""
+    // Load existing data if transactionId is provided
+    LaunchedEffect(transactionId, isTemplate) {
+        if (transactionId != null) {
+            try {
+                if (isTemplate) {
+                    val template = db.collection("users").document(userId).collection("recurring_templates")
+                        .document(transactionId).get().await().toObject(RecurringTransactionTemplate::class.java)
+                    template?.let {
+                        amount = DecimalFormat("#,##0.00").format(it.amount)
+                        category = it.category
+                        isIncome = it.isIncome
+                        isRecurring = it.isRecurring
+                        recurrenceType = when (it.recurrenceType) {
+                            "WEEKLY" -> "Semanal"
+                            "BIWEEKLY" -> "Quincenal"
+                            "MONTHLY" -> "Mensual"
+                            else -> ""
+                        }
+                        startDate = it.startDate
+                        startDate?.let { date ->
+                            Log.d("DateDebug", "Loaded template date: ${dateFormat.format(Date(date))}")
+                        }
                     }
-                    startDate = template.startDate
-                    startDate?.let {
-                        Log.d("DateDebug", "Loaded template date: ${dateFormat.format(Date(it))}, TimeZone: ${TimeZone.getDefault().id}")
+                } else {
+                    val transaction = db.collection("users").document(userId).collection("transactions")
+                        .document(transactionId).get().await().toObject(Transaction::class.java)
+                    transaction?.let {
+                        amount = DecimalFormat("#,##0.00").format(it.amount)
+                        category = it.category
+                        isIncome = it.isIncome
+                        isRecurring = it.isRecurring
+                        recurrenceType = when (it.recurrenceType) {
+                            "WEEKLY" -> "Semanal"
+                            "BIWEEKLY" -> "Quincenal"
+                            "MONTHLY" -> "Mensual"
+                            else -> ""
+                        }
+                        startDate = it.startDate
+                        startDate?.let { date ->
+                            Log.d("DateDebug", "Loaded transaction date: ${dateFormat.format(Date(date))}")
+                        }
                     }
                 }
-            } else {
-                val transactions = transactionDao.getAllTransactions().first()
-                transactions.find { it.id == transactionId }?.let { transaction ->
-                    amount = DecimalFormat("#,##0.00").format(transaction.amount)
-                    category = transaction.category
-                    isIncome = transaction.isIncome
-                    isRecurring = transaction.isRecurring
-                    recurrenceType = when (transaction.recurrenceType) {
-                        "WEEKLY" -> "Semanal"
-                        "BIWEEKLY" -> "Quincenal"
-                        "MONTHLY" -> "Mensual"
-                        else -> ""
-                    }
-                    startDate = transaction.startDate
-                    startDate?.let {
-                        Log.d("DateDebug", "Loaded transaction date: ${dateFormat.format(Date(it))}, TimeZone: ${TimeZone.getDefault().id}")
-                    }
-                }
+            } catch (e: Exception) {
+                Log.e("FirestoreError", "Error loading transaction/template: ${e.message}")
+                Toast.makeText(context, "Error al cargar datos", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
-    // Reiniciar categoría si no es válida
-    if (category !in categories) {
-        category = ""
-    }
-    // Reiniciar tipo de recurrencia si no es válida
-    if (recurrenceType !in recurrenceTypes && isRecurring) {
-        recurrenceType = ""
-    }
+    // Reset category and recurrence type if invalid
+    if (category !in categories) category = ""
+    if (isRecurring && recurrenceType !in recurrenceTypes) recurrenceType = ""
 
     Scaffold(
         modifier = modifier,
@@ -166,6 +173,40 @@ fun AddTransactionScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // Type dropdown (Ingreso/Gasto)
+            ExposedDropdownMenuBox(
+                expanded = isTypeDropdownExpanded,
+                onExpandedChange = { isTypeDropdownExpanded = !isTypeDropdownExpanded },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                TextField(
+                    value = if (isIncome) "Ingreso" else "Gasto",
+                    onValueChange = { /* No permite edición manual */ },
+                    label = { Text("Tipo") },
+                    readOnly = true,
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isTypeDropdownExpanded) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor()
+                )
+                ExposedDropdownMenu(
+                    expanded = isTypeDropdownExpanded,
+                    onDismissRequest = { isTypeDropdownExpanded = false }
+                ) {
+                    typeOptions.forEach { type ->
+                        DropdownMenuItem(
+                            text = { Text(type) },
+                            onClick = {
+                                isIncome = type == "Ingreso"
+                                category = "" // Reset category when type changes
+                                isTypeDropdownExpanded = false
+                                Log.d("AddTransaction", "Selected type: $type, isIncome: $isIncome")
+                            }
+                        )
+                    }
+                }
+            }
+            // Amount field
             TextField(
                 value = amount,
                 onValueChange = { amount = it },
@@ -173,9 +214,10 @@ fun AddTransactionScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth()
             )
+            // Category dropdown
             ExposedDropdownMenuBox(
-                expanded = isDropdownExpanded,
-                onExpandedChange = { isDropdownExpanded = !isDropdownExpanded },
+                expanded = isCategoryDropdownExpanded,
+                onExpandedChange = { isCategoryDropdownExpanded = !isCategoryDropdownExpanded },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 TextField(
@@ -183,38 +225,27 @@ fun AddTransactionScreen(
                     onValueChange = { /* No permite edición manual */ },
                     label = { Text("Categoría") },
                     readOnly = true,
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isDropdownExpanded) },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isCategoryDropdownExpanded) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .menuAnchor()
                 )
                 ExposedDropdownMenu(
-                    expanded = isDropdownExpanded,
-                    onDismissRequest = { isDropdownExpanded = false }
+                    expanded = isCategoryDropdownExpanded,
+                    onDismissRequest = { isCategoryDropdownExpanded = false }
                 ) {
                     categories.forEach { cat ->
                         DropdownMenuItem(
                             text = { Text(cat) },
                             onClick = {
                                 category = cat
-                                isDropdownExpanded = false
+                                isCategoryDropdownExpanded = false
                             }
                         )
                     }
                 }
             }
-            Column(
-                horizontalAlignment = Alignment.Start,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Tipo", fontSize = 16.sp)
-                Switch(
-                    checked = isIncome,
-                    onCheckedChange = { isIncome = it },
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-                Text(if (isIncome) "Ingreso" else "Gasto", fontSize = 14.sp)
-            }
+            // Recurring toggle
             Column(
                 horizontalAlignment = Alignment.Start,
                 modifier = Modifier.fillMaxWidth()
@@ -226,15 +257,14 @@ fun AddTransactionScreen(
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             }
+            // Date picker
             Button(
                 onClick = { showDatePicker = true },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
                     text = startDate?.let {
-                        val formattedDate = dateFormat.format(Date(it))
-                        Log.d("DateDebug", "Displayed startDate: $formattedDate, Raw: $it, TimeZone: ${TimeZone.getDefault().id}")
-                        formattedDate
+                        dateFormat.format(Date(it))
                     } ?: if (isRecurring) "Seleccionar Fecha de Inicio" else "Seleccionar Fecha de Transacción"
                 )
             }
@@ -252,7 +282,7 @@ fun AddTransactionScreen(
                                     set(Calendar.MILLISECOND, 0)
                                 }
                                 startDate = calendar.timeInMillis
-                                Log.d("DateDebug", "Selected date: ${dateFormat.format(Date(startDate!!))}, Raw: $startDate, TimeZone: ${TimeZone.getDefault().id}")
+                                Log.d("DateDebug", "Selected date: ${dateFormat.format(Date(startDate!!))}")
                             }
                             showDatePicker = false
                         }) {
@@ -268,6 +298,7 @@ fun AddTransactionScreen(
                     DatePicker(state = datePickerState)
                 }
             }
+            // Recurrence type dropdown (if recurring)
             if (isRecurring) {
                 ExposedDropdownMenuBox(
                     expanded = isRecurrenceDropdownExpanded,
@@ -300,98 +331,29 @@ fun AddTransactionScreen(
                     }
                 }
             }
+            // Save button
             Button(
                 onClick = {
                     if (amount.isNotEmpty() && category.isNotEmpty()) {
                         if (isRecurring && (recurrenceType.isEmpty() || startDate == null)) {
-                            Toast.makeText(
-                                context,
-                                "Por favor, completa los campos de recurrencia",
-                                Toast.LENGTH_SHORT
-                            ).show()
+                            Toast.makeText(context, "Por favor, completa los campos de recurrencia", Toast.LENGTH_SHORT).show()
                         } else {
                             val amountValue = amount.replace(",", "").toDoubleOrNull()
                             if (amountValue != null) {
                                 coroutineScope.launch {
-                                    val recurrenceTypeValue = if (isRecurring) {
-                                        when (recurrenceType) {
-                                            "Semanal" -> "WEEKLY"
-                                            "Quincenal" -> "BIWEEKLY"
-                                            "Mensual" -> "MONTHLY"
-                                            else -> null
-                                        }
-                                    } else null
-                                    if (isTemplate) {
-                                        val template = RecurringTransactionTemplate(
-                                            id = transactionId ?: 0,
-                                            amount = amountValue,
-                                            category = category,
-                                            isIncome = isIncome,
-                                            isRecurring = isRecurring,
-                                            recurrenceType = recurrenceTypeValue,
-                                            startDate = startDate
-                                        )
-                                        if (transactionId != null) {
-                                            transactionDao.updateTemplate(template)
-                                        } else {
-                                            transactionDao.insertTemplate(template)
-                                        }
-                                        if (isIncome && category == "Sueldo") {
-                                            val inss = amountValue * 0.07
-                                            val periodsPerYear = when (recurrenceTypeValue) {
-                                                "WEEKLY" -> 52.0
-                                                "BIWEEKLY" -> 24.0
-                                                "MONTHLY" -> 12.0
-                                                else -> 1.0
+                                    try {
+                                        val recurrenceTypeValue = if (isRecurring) {
+                                            when (recurrenceType) {
+                                                "Semanal" -> "WEEKLY"
+                                                "Quincenal" -> "BIWEEKLY"
+                                                "Mensual" -> "MONTHLY"
+                                                else -> null
                                             }
-                                            val annualGrossSalary = amountValue * periodsPerYear
-                                            val annualNetSalary = annualGrossSalary - (inss * periodsPerYear)
-                                            val annualIR = when {
-                                                annualNetSalary <= 100_000 -> 0.0
-                                                annualNetSalary <= 200_000 -> (annualNetSalary - 100_000) * 0.15
-                                                annualNetSalary <= 350_000 -> (annualNetSalary - 200_000) * 0.20 + 15_000
-                                                annualNetSalary <= 500_000 -> (annualNetSalary - 350_000) * 0.25 + 45_000
-                                                else -> (annualNetSalary - 500_000) * 0.30 + 82_500
-                                            }
-                                            val irPerPeriod = annualIR / periodsPerYear
-                                            val totalTax = inss + irPerPeriod
-                                            Log.d("TaxCalculation", "Sueldo: $amountValue, INSS: $inss, IR: $irPerPeriod, Total Tax: $totalTax, Recurrence: $recurrenceTypeValue, Date: ${startDate?.let { dateFormat.format(Date(it)) }}")
-                                            val taxTemplate = transactionDao.getTaxTemplate(startDate!!, recurrenceTypeValue)
-                                            if (taxTemplate != null) {
-                                                transactionDao.updateTemplate(
-                                                    taxTemplate.copy(
-                                                        amount = totalTax,
-                                                        isRecurring = isRecurring,
-                                                        recurrenceType = recurrenceTypeValue,
-                                                        startDate = startDate
-                                                    )
-                                                )
-                                            } else if (isRecurring) {
-                                                transactionDao.insertTemplate(
-                                                    RecurringTransactionTemplate(
-                                                        amount = totalTax,
-                                                        category = "Impuestos",
-                                                        isIncome = false,
-                                                        isRecurring = isRecurring,
-                                                        recurrenceType = recurrenceTypeValue,
-                                                        startDate = startDate
-                                                    )
-                                                )
-                                            }
-                                        }
-                                    } else {
-                                        val transaction = Transaction(
-                                            id = transactionId ?: 0,
-                                            amount = amountValue,
-                                            category = category,
-                                            isIncome = isIncome,
-                                            isRecurring = isRecurring,
-                                            recurrenceType = recurrenceTypeValue,
-                                            startDate = startDate
-                                        )
-                                        if (isRecurring) {
+                                        } else null
+                                        Log.d("AddTransaction", "Saving with isIncome: $isIncome, category: $category, amount: $amountValue")
+                                        if (isTemplate) {
                                             val template = RecurringTransactionTemplate(
-                                                id = transactionId ?: 0,
+                                                id = transactionId ?: db.collection("users").document(userId).collection("recurring_templates").document().id,
                                                 amount = amountValue,
                                                 category = category,
                                                 isIncome = isIncome,
@@ -399,67 +361,109 @@ fun AddTransactionScreen(
                                                 recurrenceType = recurrenceTypeValue,
                                                 startDate = startDate
                                             )
-                                            if (transactionId != null) {
-                                                transactionDao.updateTemplate(template)
-                                            } else {
-                                                transactionDao.insertTemplate(template)
+                                            Log.d("FirestoreSave", "Saving template: $template")
+                                            db.collection("users").document(userId).collection("recurring_templates")
+                                                .document(template.id).set(template).await()
+                                            // Tax calculation for Sueldo
+                                            if (isIncome && category == "Sueldo") {
+                                                val inss = amountValue * 0.07
+                                                val periodsPerYear = when (recurrenceTypeValue) {
+                                                    "WEEKLY" -> 52.0
+                                                    "BIWEEKLY" -> 24.0
+                                                    "MONTHLY" -> 12.0
+                                                    else -> 1.0
+                                                }
+                                                val annualGrossSalary = amountValue * periodsPerYear
+                                                val annualNetSalary = annualGrossSalary - (inss * periodsPerYear)
+                                                val annualIR = when {
+                                                    annualNetSalary <= 100_000 -> 0.0
+                                                    annualNetSalary <= 200_000 -> (annualNetSalary - 100_000) * 0.15
+                                                    annualNetSalary <= 350_000 -> (annualNetSalary - 200_000) * 0.20 + 15_000
+                                                    annualNetSalary <= 500_000 -> (annualNetSalary - 350_000) * 0.25 + 45_000
+                                                    else -> (annualNetSalary - 500_000) * 0.30 + 82_500
+                                                }
+                                                val irPerPeriod = annualIR / periodsPerYear
+                                                val totalTax = inss + irPerPeriod
+                                                Log.d("TaxCalculation", "Sueldo: $amountValue, INSS: $inss, IR: $irPerPeriod, Total Tax: $totalTax")
+                                                val taxTemplateId = db.collection("users").document(userId).collection("recurring_templates").document().id
+                                                val taxTemplate = RecurringTransactionTemplate(
+                                                    id = taxTemplateId,
+                                                    amount = totalTax,
+                                                    category = "Impuestos",
+                                                    isIncome = false,
+                                                    isRecurring = isRecurring,
+                                                    recurrenceType = recurrenceTypeValue,
+                                                    startDate = startDate
+                                                )
+                                                Log.d("FirestoreSave", "Saving tax template: $taxTemplate")
+                                                db.collection("users").document(userId).collection("recurring_templates").document(taxTemplateId)
+                                                    .set(taxTemplate).await()
                                             }
-                                        }
-                                        if (transactionId != null) {
-                                            transactionDao.update(transaction)
                                         } else {
-                                            transactionDao.insert(transaction)
-                                        }
-                                        if (isIncome && category == "Sueldo") {
-                                            val inss = amountValue * 0.07
-                                            val periodsPerYear = when (recurrenceTypeValue) {
-                                                "WEEKLY" -> 52.0
-                                                "BIWEEKLY" -> 24.0
-                                                "MONTHLY" -> 12.0
-                                                else -> 1.0
+                                            val transaction = Transaction(
+                                                id = transactionId ?: db.collection("users").document(userId).collection("transactions").document().id,
+                                                amount = amountValue,
+                                                category = category,
+                                                isIncome = isIncome,
+                                                isRecurring = isRecurring,
+                                                recurrenceType = recurrenceTypeValue,
+                                                startDate = startDate
+                                            )
+                                            Log.d("FirestoreSave", "Saving transaction: $transaction")
+                                            db.collection("users").document(userId).collection("transactions")
+                                                .document(transaction.id).set(transaction).await()
+                                            if (isRecurring) {
+                                                val templateId = transactionId ?: db.collection("users").document(userId).collection("recurring_templates").document().id
+                                                val template = RecurringTransactionTemplate(
+                                                    id = templateId,
+                                                    amount = amountValue,
+                                                    category = category,
+                                                    isIncome = isIncome,
+                                                    isRecurring = isRecurring,
+                                                    recurrenceType = recurrenceTypeValue,
+                                                    startDate = startDate
+                                                )
+                                                Log.d("FirestoreSave", "Saving template: $template")
+                                                db.collection("users").document(userId).collection("recurring_templates")
+                                                    .document(templateId).set(template).await()
                                             }
-                                            val annualGrossSalary = amountValue * periodsPerYear
-                                            val annualNetSalary = annualGrossSalary - (inss * periodsPerYear)
-                                            val annualIR = when {
-                                                annualNetSalary <= 100_000 -> 0.0
-                                                annualNetSalary <= 200_000 -> (annualNetSalary - 100_000) * 0.15
-                                                annualNetSalary <= 350_000 -> (annualNetSalary - 200_000) * 0.20 + 15_000
-                                                annualNetSalary <= 500_000 -> (annualNetSalary - 350_000) * 0.25 + 45_000
-                                                else -> (annualNetSalary - 500_000) * 0.30 + 82_500
-                                            }
-                                            val irPerPeriod = annualIR / periodsPerYear
-                                            val totalTax = inss + irPerPeriod
-                                            Log.d("TaxCalculation", "Sueldo: $amountValue, INSS: $inss, IR: $irPerPeriod, Total Tax: $totalTax, Recurrence: $recurrenceTypeValue, Date: ${startDate?.let { dateFormat.format(Date(it)) }}")
-                                            if (transactionId != null) {
-                                                val transactions = transactionDao.getAllTransactions().first()
-                                                val taxTransaction = transactions.find {
-                                                    !it.isIncome && it.category == "Impuestos" && it.startDate == startDate
-                                                            && it.recurrenceType == recurrenceTypeValue
+                                            if (isIncome && category == "Sueldo") {
+                                                val inss = amountValue * 0.07
+                                                val periodsPerYear = when (recurrenceTypeValue) {
+                                                    "WEEKLY" -> 52.0
+                                                    "BIWEEKLY" -> 24.0
+                                                    "MONTHLY" -> 12.0
+                                                    else -> 1.0
                                                 }
-                                                taxTransaction?.let {
-                                                    transactionDao.update(
-                                                        it.copy(
-                                                            amount = totalTax,
-                                                            isRecurring = isRecurring,
-                                                            recurrenceType = recurrenceTypeValue,
-                                                            startDate = startDate
-                                                        )
-                                                    )
-                                                } ?: run {
-                                                    transactionDao.insert(
-                                                        Transaction(
-                                                            amount = totalTax,
-                                                            category = "Impuestos",
-                                                            isIncome = false,
-                                                            isRecurring = isRecurring,
-                                                            recurrenceType = recurrenceTypeValue,
-                                                            startDate = startDate
-                                                        )
-                                                    )
+                                                val annualGrossSalary = amountValue * periodsPerYear
+                                                val annualNetSalary = annualGrossSalary - (inss * periodsPerYear)
+                                                val annualIR = when {
+                                                    annualNetSalary <= 100_000 -> 0.0
+                                                    annualNetSalary <= 200_000 -> (annualNetSalary - 100_000) * 0.15
+                                                    annualNetSalary <= 350_000 -> (annualNetSalary - 200_000) * 0.20 + 15_000
+                                                    annualNetSalary <= 500_000 -> (annualNetSalary - 350_000) * 0.25 + 45_000
+                                                    else -> (annualNetSalary - 500_000) * 0.30 + 82_500
                                                 }
-                                            } else {
-                                                transactionDao.insert(
-                                                    Transaction(
+                                                val irPerPeriod = annualIR / periodsPerYear
+                                                val totalTax = inss + irPerPeriod
+                                                Log.d("TaxCalculation", "Sueldo: $amountValue, INSS: $inss, IR: $irPerPeriod, Total Tax: $totalTax")
+                                                val taxTransactionId = db.collection("users").document(userId).collection("transactions").document().id
+                                                val taxTransaction = Transaction(
+                                                    id = taxTransactionId,
+                                                    amount = totalTax,
+                                                    category = "Impuestos",
+                                                    isIncome = false,
+                                                    isRecurring = isRecurring,
+                                                    recurrenceType = recurrenceTypeValue,
+                                                    startDate = startDate
+                                                )
+                                                Log.d("FirestoreSave", "Saving tax transaction: $taxTransaction")
+                                                db.collection("users").document(userId).collection("transactions").document(taxTransactionId)
+                                                    .set(taxTransaction).await()
+                                                if (isRecurring) {
+                                                    val taxTemplateId = db.collection("users").document(userId).collection("recurring_templates").document().id
+                                                    val taxTemplate = RecurringTransactionTemplate(
+                                                        id = taxTemplateId,
                                                         amount = totalTax,
                                                         category = "Impuestos",
                                                         isIncome = false,
@@ -467,59 +471,33 @@ fun AddTransactionScreen(
                                                         recurrenceType = recurrenceTypeValue,
                                                         startDate = startDate
                                                     )
-                                                )
-                                            }
-                                            if (isRecurring) {
-                                                val taxTemplate = transactionDao.getTaxTemplate(startDate!!, recurrenceTypeValue)
-                                                if (taxTemplate != null) {
-                                                    transactionDao.updateTemplate(
-                                                        taxTemplate.copy(
-                                                            amount = totalTax,
-                                                            isRecurring = isRecurring,
-                                                            recurrenceType = recurrenceTypeValue,
-                                                            startDate = startDate
-                                                        )
-                                                    )
-                                                } else {
-                                                    transactionDao.insertTemplate(
-                                                        RecurringTransactionTemplate(
-                                                            amount = totalTax,
-                                                            category = "Impuestos",
-                                                            isIncome = false,
-                                                            isRecurring = isRecurring,
-                                                            recurrenceType = recurrenceTypeValue,
-                                                            startDate = startDate
-                                                        )
-                                                    )
+                                                    Log.d("FirestoreSave", "Saving tax template: $taxTemplate")
+                                                    db.collection("users").document(userId).collection("recurring_templates").document(taxTemplateId)
+                                                        .set(taxTemplate).await()
                                                 }
                                             }
                                         }
+                                        Toast.makeText(
+                                            context,
+                                            if (isTemplate) {
+                                                if (transactionId == null) "Plantilla guardada" else "Plantilla actualizada"
+                                            } else {
+                                                if (transactionId == null) "Transacción guardada" else "Transacción actualizada"
+                                            },
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        navController.navigateUp()
+                                    } catch (e: Exception) {
+                                        Log.e("FirestoreError", "Error saving transaction/template: ${e.message}")
+                                        Toast.makeText(context, "Error al guardar", Toast.LENGTH_SHORT).show()
                                     }
-                                    Toast.makeText(
-                                        context,
-                                        if (isTemplate) {
-                                            if (transactionId == null) "Plantilla guardada" else "Plantilla actualizada"
-                                        } else {
-                                            if (transactionId == null) "Transacción guardada" else "Transacción actualizada"
-                                        },
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                    navController.navigateUp()
                                 }
                             } else {
-                                Toast.makeText(
-                                    context,
-                                    "Por favor, ingresa un monto válido",
-                                    Toast.LENGTH_SHORT
-                                ).show()
+                                Toast.makeText(context, "Por favor, ingresa un monto válido", Toast.LENGTH_SHORT).show()
                             }
                         }
                     } else {
-                        Toast.makeText(
-                            context,
-                            "Por favor, completa todos los campos",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        Toast.makeText(context, "Por favor, completa todos los campos", Toast.LENGTH_SHORT).show()
                     }
                 },
                 modifier = Modifier.fillMaxWidth()

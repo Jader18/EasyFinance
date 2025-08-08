@@ -7,10 +7,12 @@ import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.room.Room
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import kotlinx.coroutines.flow.first
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.ktx.Firebase
+import kotlinx.coroutines.tasks.await
 import java.text.DecimalFormat
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -23,14 +25,10 @@ class RecurringTransactionWorker(
     params: WorkerParameters
 ) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
-        val db = Room.databaseBuilder(
-            applicationContext,
-            AppDatabase::class.java,
-            "easyfinance-db"
-        ).build()
-        val dao = db.transactionDao()
+        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return Result.failure()
+        val db = Firebase.firestore
 
-        // Crear canal de notificación para Android 8.0+
+        // Create notification channel for Android 8.0+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 "recurring_transaction_channel",
@@ -43,7 +41,8 @@ class RecurringTransactionWorker(
             notificationManager.createNotificationChannel(channel)
         }
 
-        val templates = dao.getRecurringTemplates().first()
+        val templates = db.collection("users").document(userId).collection("recurring_templates")
+            .get().await().toObjects(RecurringTransactionTemplate::class.java)
         val calendar = Calendar.getInstance(TimeZone.getDefault())
         val currentTime = calendar.timeInMillis
         val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).apply {
@@ -53,7 +52,7 @@ class RecurringTransactionWorker(
 
         templates.forEach { template ->
             template.startDate?.let { startDate ->
-                Log.d("RecurringDebug", "Processing template: ${template.category}, StartDate: ${dateFormat.format(Date(startDate))}, CurrentTime: ${dateFormat.format(Date(currentTime))}")
+                Log.d("RecurringDebug", "Processing template: ${template.category}, StartDate: ${dateFormat.format(Date(startDate))}")
                 if (currentTime >= startDate) {
                     val interval = when (template.recurrenceType) {
                         "WEEKLY" -> 7 * 24 * 60 * 60 * 1000L
@@ -74,93 +73,89 @@ class RecurringTransactionWorker(
                         }.timeInMillis
                         Log.d("RecurringDebug", "New transaction date: ${dateFormat.format(Date(newTransactionDate))}")
 
-                        val transactionExists = dao.existsByStartDateAndCategoryAndRecurrenceType(
-                            startDate = newTransactionDate,
-                            category = template.category,
-                            recurrenceType = template.recurrenceType
-                        )
+                        val transactionExists = db.collection("users").document(userId).collection("transactions")
+                            .whereEqualTo("startDate", newTransactionDate)
+                            .whereEqualTo("category", template.category)
+                            .whereEqualTo("recurrenceType", template.recurrenceType)
+                            .get().await().isEmpty.not()
                         if (!transactionExists) {
-                            dao.insert(
-                                Transaction(
-                                    amount = template.amount,
-                                    category = template.category,
-                                    isIncome = template.isIncome,
-                                    isRecurring = template.isRecurring,
-                                    recurrenceType = template.recurrenceType,
-                                    startDate = newTransactionDate
-                                )
-                            )
-                            // Enviar notificación para la transacción
-                            val notification = NotificationCompat.Builder(applicationContext, "recurring_transaction_channel")
-                                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                                .setContentTitle("Transacción Recurrente Generada")
-                                .setContentText("${if (template.isIncome) "Ingreso" else "Gasto"}: ${decimalFormat.format(template.amount)} - ${template.category} (${dateFormat.format(Date(newTransactionDate))})")
-                                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                                .setAutoCancel(true)
-                                .build()
-                            NotificationManagerCompat.from(applicationContext).notify(newTransactionDate.toInt(), notification)
-                            Log.d("RecurringDebug", "Inserted transaction: ${template.category}, Date: ${dateFormat.format(Date(newTransactionDate))}")
-                        } else {
-                            Log.d("RecurringDebug", "Transaction already exists: ${template.category}, Date: ${dateFormat.format(Date(newTransactionDate))}")
-                        }
-
-                        if (template.isIncome && template.category == "Sueldo") {
-                            val taxTransactionExists = dao.existsByStartDateAndCategoryAndRecurrenceType(
-                                startDate = newTransactionDate,
-                                category = "Impuestos",
-                                recurrenceType = template.recurrenceType
-                            )
-                            if (!taxTransactionExists) {
-                                val inss = template.amount * 0.07
-                                val periodsPerYear = when (template.recurrenceType) {
-                                    "WEEKLY" -> 52.0
-                                    "BIWEEKLY" -> 24.0
-                                    "MONTHLY" -> 12.0
-                                    else -> 1.0
-                                }
-                                val annualGrossSalary = template.amount * periodsPerYear
-                                val annualNetSalary = annualGrossSalary - (inss * periodsPerYear)
-                                val annualIR = when {
-                                    annualNetSalary <= 100_000 -> 0.0
-                                    annualNetSalary <= 200_000 -> (annualNetSalary - 100_000) * 0.15
-                                    annualNetSalary <= 350_000 -> (annualNetSalary - 200_000) * 0.20 + 15_000
-                                    annualNetSalary <= 500_000 -> (annualNetSalary - 350_000) * 0.25 + 45_000
-                                    else -> (annualNetSalary - 500_000) * 0.30 + 82_500
-                                }
-                                val irPerPeriod = annualIR / periodsPerYear
-                                val totalTax = inss + irPerPeriod
-                                Log.d("RecurringTax", "Sueldo: ${template.amount}, INSS: $inss, IR: $irPerPeriod, Total Tax: $totalTax, Recurrence: ${template.recurrenceType}, Date: ${dateFormat.format(Date(newTransactionDate))}")
-
-                                dao.insert(
+                            val transactionId = db.collection("users").document(userId).collection("transactions").document().id
+                            db.collection("users").document(userId).collection("transactions").document(transactionId)
+                                .set(
                                     Transaction(
-                                        amount = totalTax,
-                                        category = "Impuestos",
-                                        isIncome = false,
+                                        id = transactionId,
+                                        amount = template.amount,
+                                        category = template.category,
+                                        isIncome = template.isIncome,
                                         isRecurring = template.isRecurring,
                                         recurrenceType = template.recurrenceType,
                                         startDate = newTransactionDate
                                     )
-                                )
-                                // Enviar notificación para la transacción de impuestos
-                                val taxNotification = NotificationCompat.Builder(applicationContext, "recurring_transaction_channel")
-                                    .setSmallIcon(android.R.drawable.ic_dialog_info)
-                                    .setContentTitle("Transacción de Impuestos Generada")
-                                    .setContentText("Impuestos: ${decimalFormat.format(totalTax)} (${dateFormat.format(Date(newTransactionDate))})")
-                                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                                    .setAutoCancel(true)
-                                    .build()
-                                NotificationManagerCompat.from(applicationContext).notify(newTransactionDate.toInt() + 1, taxNotification)
-                                Log.d("RecurringTax", "Inserted tax transaction: Impuestos, Date: ${dateFormat.format(Date(newTransactionDate))}")
-                            } else {
-                                Log.d("RecurringTax", "Tax transaction already exists: Impuestos, Date: ${dateFormat.format(Date(newTransactionDate))}")
+                                ).await()
+                            val notification = NotificationCompat.Builder(applicationContext, "recurring_transaction_channel")
+                                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                                .setContentTitle("Transacción Recurrente Generada")
+                                .setContentText("${if (template.isIncome) "Ingreso" else "Gasto"}: ${decimalFormat.format(template.amount)} - ${template.category}")
+                                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                                .setAutoCancel(true)
+                                .build()
+                            NotificationManagerCompat.from(applicationContext).notify(newTransactionDate.toInt(), notification)
+                            Log.d("RecurringDebug", "Inserted transaction: ${template.category}")
+
+                            if (template.isIncome && template.category == "Sueldo") {
+                                val taxExists = db.collection("users").document(userId).collection("transactions")
+                                    .whereEqualTo("startDate", newTransactionDate)
+                                    .whereEqualTo("category", "Impuestos")
+                                    .whereEqualTo("recurrenceType", template.recurrenceType)
+                                    .get().await().isEmpty.not()
+                                if (!taxExists) {
+                                    val inss = template.amount * 0.07
+                                    val periodsPerYear = when (template.recurrenceType) {
+                                        "WEEKLY" -> 52.0
+                                        "BIWEEKLY" -> 24.0
+                                        "MONTHLY" -> 12.0
+                                        else -> 1.0
+                                    }
+                                    val annualGrossSalary = template.amount * periodsPerYear
+                                    val annualNetSalary = annualGrossSalary - (inss * periodsPerYear)
+                                    val annualIR = when {
+                                        annualNetSalary <= 100_000 -> 0.0
+                                        annualNetSalary <= 200_000 -> (annualNetSalary - 100_000) * 0.15
+                                        annualNetSalary <= 350_000 -> (annualNetSalary - 200_000) * 0.20 + 15_000
+                                        annualNetSalary <= 500_000 -> (annualNetSalary - 350_000) * 0.25 + 45_000
+                                        else -> (annualNetSalary - 500_000) * 0.30 + 82_500
+                                    }
+                                    val irPerPeriod = annualIR / periodsPerYear
+                                    val totalTax = inss + irPerPeriod
+                                    val taxTransactionId = db.collection("users").document(userId).collection("transactions").document().id
+                                    db.collection("users").document(userId).collection("transactions").document(taxTransactionId)
+                                        .set(
+                                            Transaction(
+                                                id = taxTransactionId,
+                                                amount = totalTax,
+                                                category = "Impuestos",
+                                                isIncome = false,
+                                                isRecurring = template.isRecurring,
+                                                recurrenceType = template.recurrenceType,
+                                                startDate = newTransactionDate
+                                    )
+                                    ).await()
+                                    val taxNotification = NotificationCompat.Builder(applicationContext, "recurring_transaction_channel")
+                                        .setSmallIcon(android.R.drawable.ic_dialog_info)
+                                        .setContentTitle("Transacción de Impuestos Generada")
+                                        .setContentText("Impuestos: ${decimalFormat.format(totalTax)}")
+                                        .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                                        .setAutoCancel(true)
+                                        .build()
+                                    NotificationManagerCompat.from(applicationContext).notify(newTransactionDate.toInt() + 1, taxNotification)
+                                    Log.d("RecurringTax", "Inserted tax transaction: Impuestos")
+                                }
                             }
                         }
                     }
                 }
             }
         }
-
-        db.close()
         return Result.success()
     }
 }

@@ -5,30 +5,38 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.core.app.ActivityCompat
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.core.app.ActivityCompat
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import androidx.room.Room
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
-import com.jader.easyfinance.data.AppDatabase
-import com.jader.easyfinance.data.RecurringTransactionWorker
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.ktx.Firebase
 import com.jader.easyfinance.ui.screens.AddTransactionScreen
 import com.jader.easyfinance.ui.screens.ChartsScreen
 import com.jader.easyfinance.ui.screens.HomeScreen
+import com.jader.easyfinance.ui.screens.LoginScreen
 import com.jader.easyfinance.ui.screens.RecurringTransactionsScreen
 import com.jader.easyfinance.ui.screens.TransactionsScreen
 import com.jader.easyfinance.ui.theme.EasyFinanceTheme
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import com.jader.easyfinance.data.RecurringTransactionWorker
 import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Solicitar permisos de almacenamiento para versiones < Android 13
+        // Enable Firestore offline persistence
+        Firebase.firestore.firestoreSettings = com.google.firebase.firestore.FirebaseFirestoreSettings.Builder()
+            .setPersistenceEnabled(true)
+            .build()
+
+        // Request permissions
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             ActivityCompat.requestPermissions(
                 this,
@@ -39,7 +47,6 @@ class MainActivity : ComponentActivity() {
                 101
             )
         }
-        // Solicitar permiso de notificaciones para Android 13+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             ActivityCompat.requestPermissions(
                 this,
@@ -48,14 +55,7 @@ class MainActivity : ComponentActivity() {
             )
         }
 
-        val db = Room.databaseBuilder(
-            applicationContext,
-            AppDatabase::class.java,
-            "easyfinance-db"
-        )
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
-            .build()
-
+        // Schedule recurring transaction worker
         val workRequest = PeriodicWorkRequestBuilder<RecurringTransactionWorker>(
             repeatInterval = 15,
             repeatIntervalTimeUnit = TimeUnit.MINUTES
@@ -68,39 +68,42 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             EasyFinanceTheme {
-                AppNavigation(db.transactionDao())
+                AppNavigation()
             }
         }
     }
 }
 
 @Composable
-fun AppNavigation(transactionDao: com.jader.easyfinance.data.TransactionDao) {
+fun AppNavigation() {
     val navController = rememberNavController()
-    NavHost(navController = navController, startDestination = "home") {
+    NavHost(navController = navController, startDestination = "login") {
+        composable("login") {
+            LoginScreen(navController = navController)
+        }
         composable("home") {
-            HomeScreen(navController = navController, transactionDao = transactionDao)
+            HomeScreen(navController = navController)
         }
         composable("add_transaction") {
-            AddTransactionScreen(navController = navController, transactionDao = transactionDao)
+            AddTransactionScreen(navController = navController)
         }
         composable("add_transaction/{transactionId}") { backStackEntry ->
-            val transactionId = backStackEntry.arguments?.getString("transactionId")?.toIntOrNull()
-            AddTransactionScreen(navController = navController, transactionDao = transactionDao, transactionId = transactionId)
+            val transactionId = backStackEntry.arguments?.getString("transactionId")
+            AddTransactionScreen(navController = navController, transactionId = transactionId)
         }
         composable("transactions") {
-            TransactionsScreen(navController = navController, transactionDao = transactionDao)
+            TransactionsScreen(navController = navController)
         }
         composable("recurring_transactions") {
-            RecurringTransactionsScreen(navController = navController, transactionDao = transactionDao)
+            RecurringTransactionsScreen(navController = navController)
         }
         composable("add_recurring_transaction/{templateId}") { backStackEntry ->
-            val templateId = backStackEntry.arguments?.getString("templateId")?.toIntOrNull()
-            AddTransactionScreen(navController = navController, transactionDao = transactionDao, transactionId = templateId, isTemplate = true)
+            val templateId = backStackEntry.arguments?.getString("templateId")
+            AddTransactionScreen(navController = navController, transactionId = templateId, isTemplate = true)
         }
-        // NUEVA ruta para pantalla de gráficos
         composable("charts") {
-            ChartsScreen(navController = navController, transactionDao = transactionDao)
+            ChartsScreen(navController = navController)
         }
+
     }
 }

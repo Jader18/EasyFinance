@@ -3,8 +3,11 @@ package com.jader.easyfinance.data
 import android.content.Context
 import android.net.Uri
 import android.widget.Toast
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.ktx.Firebase
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -19,21 +22,24 @@ object DataManager {
         timeZone = TimeZone.getDefault()
     }
 
-    suspend fun exportToCsv(context: Context, transactionDao: TransactionDao, uri: Uri) {
+    suspend fun exportToCsv(context: Context, uri: Uri) {
         withContext(Dispatchers.IO) {
             try {
-                val transactions = transactionDao.getAllTransactions().first()
-                val templates = transactionDao.getRecurringTemplates().first()
+                val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return@withContext
+                val db = Firebase.firestore
+                val transactions = db.collection("users").document(userId).collection("transactions")
+                    .get().await().toObjects(Transaction::class.java)
+                val templates = db.collection("users").document(userId).collection("recurring_templates")
+                    .get().await().toObjects(RecurringTransactionTemplate::class.java)
+
                 context.contentResolver.openOutputStream(uri)?.use { outputStream ->
                     OutputStreamWriter(outputStream).use { writer ->
-                        // Escribir encabezados para transacciones
                         writer.write("=== Transactions ===\n")
                         writer.write("id,amount,category,isIncome,isRecurring,recurrenceType,startDate\n")
                         transactions.forEach { transaction ->
                             val startDate = transaction.startDate?.let { dateFormat.format(Date(it)) } ?: ""
                             writer.write("${transaction.id},${transaction.amount},${transaction.category},${transaction.isIncome},${transaction.isRecurring},${transaction.recurrenceType ?: ""},$startDate\n")
                         }
-                        // Escribir encabezados para plantillas recurrentes
                         writer.write("\n=== Recurring Templates ===\n")
                         writer.write("id,amount,category,isIncome,isRecurring,recurrenceType,startDate\n")
                         templates.forEach { template ->
@@ -53,16 +59,20 @@ object DataManager {
         }
     }
 
-    suspend fun importFromCsv(context: Context, transactionDao: TransactionDao, uri: Uri) {
+    suspend fun importFromCsv(context: Context, uri: Uri) {
         withContext(Dispatchers.IO) {
             try {
+                val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return@withContext
+                val db = Firebase.firestore
                 context.contentResolver.openInputStream(uri)?.use { inputStream ->
                     BufferedReader(InputStreamReader(inputStream)).use { reader ->
                         var isTransactionSection = false
                         var isTemplateSection = false
 
-                        val existingTransactions = transactionDao.getAllTransactions().first()
-                        val existingTemplates = transactionDao.getRecurringTemplates().first()
+                        val existingTransactions = db.collection("users").document(userId).collection("transactions")
+                            .get().await().toObjects(Transaction::class.java)
+                        val existingTemplates = db.collection("users").document(userId).collection("recurring_templates")
+                            .get().await().toObjects(RecurringTransactionTemplate::class.java)
 
                         reader.lineSequence().forEach { line ->
                             when (line.trim()) {
@@ -79,7 +89,7 @@ object DataManager {
                                         val parts = line.split(",")
                                         if (parts.size >= 7) {
                                             try {
-                                                val id = parts[0].toIntOrNull() ?: 0
+                                                val id = parts[0]
                                                 val amount = parts[1].toDoubleOrNull() ?: 0.0
                                                 val category = parts[2]
                                                 val isIncome = parts[3].toBoolean()
@@ -99,18 +109,24 @@ object DataManager {
                                                         recurrenceType = recurrenceType,
                                                         startDate = startDate
                                                     )
-
-                                                    if (id > 0) {
-                                                        val existing = existingTransactions.find { it.id == id }
-                                                        if (existing == null) {
-                                                            transactionDao.insert(transaction)
+                                                    if (id.isNotEmpty()) {
+                                                        if (existingTransactions.none { it.id == id }) {
+                                                            db.collection("users").document(userId).collection("transactions")
+                                                                .document(id).set(transaction).await()
                                                         } else {
-                                                            transactionDao.update(transaction)
+                                                            db.collection("users").document(userId).collection("transactions")
+                                                                .document(id).update(
+                                                                    mapOf(
+                                                                        "amount" to amount,
+                                                                        "category" to category,
+                                                                        "isIncome" to isIncome,
+                                                                        "isRecurring" to isRecurring,
+                                                                        "recurrenceType" to recurrenceType,
+                                                                        "startDate" to startDate
+                                                                    )
+                                                                ).await()
                                                         }
-                                                    } else {
-                                                        transactionDao.insert(transaction)
                                                     }
-
                                                 } else if (isTemplateSection) {
                                                     val template = RecurringTransactionTemplate(
                                                         id = id,
@@ -121,20 +137,27 @@ object DataManager {
                                                         recurrenceType = recurrenceType,
                                                         startDate = startDate
                                                     )
-
-                                                    if (id > 0) {
-                                                        val existing = existingTemplates.find { it.id == id }
-                                                        if (existing == null) {
-                                                            transactionDao.insertTemplate(template)
+                                                    if (id.isNotEmpty()) {
+                                                        if (existingTemplates.none { it.id == id }) {
+                                                            db.collection("users").document(userId).collection("recurring_templates")
+                                                                .document(id).set(template).await()
                                                         } else {
-                                                            transactionDao.updateTemplate(template)
+                                                            db.collection("users").document(userId).collection("recurring_templates")
+                                                                .document(id).update(
+                                                                    mapOf(
+                                                                        "amount" to amount,
+                                                                        "category" to category,
+                                                                        "isIncome" to isIncome,
+                                                                        "isRecurring" to isRecurring,
+                                                                        "recurrenceType" to recurrenceType,
+                                                                        "startDate" to startDate
+                                                                    )
+                                                                ).await()
                                                         }
-                                                    } else {
-                                                        transactionDao.insertTemplate(template)
                                                     }
                                                 }
                                             } catch (_: Exception) {
-                                                // Ignorar línea mal formada
+                                                // Ignore malformed line
                                             }
                                         }
                                     }
