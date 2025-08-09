@@ -13,9 +13,17 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.TimeZone
+import java.util.*
+
+data class ReportFilterParams(
+    val startDate: Long? = null,
+    val endDate: Long? = null,
+    val showIncomes: Boolean = true,
+    val showExpenses: Boolean = true,
+    val showRecurring: Boolean = true,
+    val showNonRecurring: Boolean = true,
+    val category: String? = null
+)
 
 object DataManager {
     private val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).apply {
@@ -59,6 +67,72 @@ object DataManager {
         }
     }
 
+    suspend fun exportFilteredReport(
+        context: Context,
+        uri: Uri,
+        filterParams: ReportFilterParams
+    ) {
+        withContext(Dispatchers.IO) {
+            try {
+                val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return@withContext
+                val db = Firebase.firestore
+
+                val allTransactions = db.collection("users").document(userId).collection("transactions")
+                    .get().await().toObjects(Transaction::class.java)
+
+                var filtered = allTransactions.filter { t ->
+                    val fecha = t.startDate ?: 0L
+                    val afterStart = filterParams.startDate?.let { fecha >= it } ?: true
+                    val beforeEnd = filterParams.endDate?.let { fecha <= it } ?: true
+                    afterStart && beforeEnd
+                }
+
+                filtered = filtered.filter { t ->
+                    (filterParams.showIncomes && t.isIncome) ||
+                            (filterParams.showExpenses && !t.isIncome)
+                }
+
+                filtered = filtered.filter { t ->
+                    (filterParams.showRecurring && t.isRecurring) ||
+                            (filterParams.showNonRecurring && !t.isRecurring)
+                }
+
+                filtered = filterParams.category?.let { category ->
+                    filtered.filter { it.category == category }
+                } ?: filtered
+
+                filtered = filtered.sortedByDescending { it.startDate ?: 0L }
+
+                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                    OutputStreamWriter(outputStream).use { writer ->
+                        writer.write("Reporte generado el: ${dateFormat.format(Date())}\n")
+                        writer.write("Filtros aplicados:\n")
+                        writer.write("Rango: ${filterParams.startDate?.let { dateFormat.format(Date(it)) } ?: "Inicio"} - ${filterParams.endDate?.let { dateFormat.format(Date(it)) } ?: "Fin"}\n")
+                        writer.write("Mostrar ingresos: ${filterParams.showIncomes}\n")
+                        writer.write("Mostrar gastos: ${filterParams.showExpenses}\n")
+                        writer.write("Mostrar recurrentes: ${filterParams.showRecurring}\n")
+                        writer.write("Mostrar no recurrentes: ${filterParams.showNonRecurring}\n")
+                        writer.write("Categoría: ${filterParams.category ?: "Todas"}\n\n")
+                        writer.write("fecha,monto,categoria,tipo,recurrente\n")
+                        filtered.forEach { t ->
+                            val fechaStr = t.startDate?.let { dateFormat.format(Date(it)) } ?: ""
+                            val tipoStr = if (t.isIncome) "Ingreso" else "Gasto"
+                            writer.write("$fechaStr,${t.amount},${t.category},$tipoStr,${t.isRecurring}\n")
+                        }
+                    }
+                }
+
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Reporte generado exitosamente", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Error al generar reporte: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
     suspend fun importFromCsv(context: Context, uri: Uri) {
         withContext(Dispatchers.IO) {
             try {
@@ -96,7 +170,13 @@ object DataManager {
                                                 val isRecurring = parts[4].toBoolean()
                                                 val recurrenceType = parts[5].ifEmpty { null }
                                                 val startDate = parts[6].ifEmpty { null }?.let {
-                                                    dateFormat.parse(it)?.time
+                                                    val parsedDate = dateFormat.parse(it)?.time
+                                                    parsedDate?.let { date ->
+                                                        Calendar.getInstance(TimeZone.getDefault()).apply {
+                                                            timeInMillis = date
+                                                            add(Calendar.DAY_OF_MONTH, 1)
+                                                        }.timeInMillis
+                                                    }
                                                 }
 
                                                 if (isTransactionSection) {
@@ -157,7 +237,7 @@ object DataManager {
                                                     }
                                                 }
                                             } catch (_: Exception) {
-                                                // Ignore malformed line
+                                                // Ignorar línea mal formada
                                             }
                                         }
                                     }

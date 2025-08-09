@@ -174,6 +174,16 @@ fun HomeScreen(
                         importLauncher.launch(mimeTypes)
                     }
                 )
+
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Filled.Numbers, contentDescription = "Reportes") },
+                    label = { Text("Reportes") },
+                    selected = false,
+                    onClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        navController.navigate("reports")
+                    }
+                )
                 NavigationDrawerItem(
                     icon = { Icon(Icons.Filled.BarChart, contentDescription = "Gráficos") },
                     label = { Text("Gráficos") },

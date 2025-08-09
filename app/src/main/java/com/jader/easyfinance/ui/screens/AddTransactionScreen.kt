@@ -64,7 +64,7 @@ fun AddTransactionScreen(
     var amount by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("") }
     var isIncome by remember { mutableStateOf(false) }
-    var isRecurring by remember { mutableStateOf(isTemplate) } // Default to isTemplate for recurring templates
+    var isRecurring by remember { mutableStateOf(isTemplate) }
     var recurrenceType by remember { mutableStateOf("") }
     var startDate by remember { mutableStateOf<Long?>(null) }
     var isTypeDropdownExpanded by remember { mutableStateOf(false) }
@@ -280,9 +280,10 @@ fun AddTransactionScreen(
                                     set(Calendar.MINUTE, 0)
                                     set(Calendar.SECOND, 0)
                                     set(Calendar.MILLISECOND, 0)
+                                    add(Calendar.DAY_OF_MONTH, 1) // Add one day to the selected date
                                 }
                                 startDate = calendar.timeInMillis
-                                Log.d("DateDebug", "Selected date: ${dateFormat.format(Date(startDate!!))}")
+                                Log.d("DateDebug", "Selected date (adjusted +1 day): ${dateFormat.format(Date(startDate!!))}")
                             }
                             showDatePicker = false
                         }) {

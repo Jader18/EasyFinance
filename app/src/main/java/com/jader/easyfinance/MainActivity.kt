@@ -25,6 +25,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.jader.easyfinance.data.RecurringTransactionWorker
+import com.jader.easyfinance.ui.screens.ReportScreen
 import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
@@ -104,6 +105,10 @@ fun AppNavigation() {
         composable("charts") {
             ChartsScreen(navController = navController)
         }
+        composable("reports") {
+            ReportScreen(navController = navController)
+        }
+
 
     }
 }

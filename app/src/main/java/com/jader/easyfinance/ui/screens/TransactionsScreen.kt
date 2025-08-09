@@ -16,7 +16,10 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -24,6 +27,7 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
@@ -54,6 +58,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.text.DecimalFormat
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
@@ -65,6 +70,9 @@ fun TransactionsScreen(
     modifier: Modifier = Modifier
 ) {
     var selectedFilter by remember { mutableIntStateOf(0) } // 0 = Todos, 1 = Ingresos, 2 = Gastos
+    var selectedDateFilter by remember { mutableIntStateOf(0) } // 0 = Todo, 1 = Últimos 7 días, 2 = Último mes
+    var selectedCategory by remember { mutableStateOf("Todas") } // Filtro por categoría
+    var isCategoryDropdownExpanded by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var transactionToDelete by remember { mutableStateOf<Transaction?>(null) }
     val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
@@ -89,8 +97,15 @@ fun TransactionsScreen(
         awaitClose { listener.remove() }
     }
     val transactions: State<List<Transaction>> = transactionsFlow.collectAsState(initial = emptyList())
-    val filteredTransactions = remember(transactions.value, selectedFilter) {
-        when (selectedFilter) {
+    val today = Calendar.getInstance(TimeZone.getDefault()).apply {
+        set(Calendar.HOUR_OF_DAY, 23)
+        set(Calendar.MINUTE, 59)
+        set(Calendar.SECOND, 59)
+        set(Calendar.MILLISECOND, 999)
+    }
+    val categories = listOf("Todas", "Sueldo", "Otros", "Alimentos", "Transporte", "Entretenimiento", "Hogar", "Impuestos")
+    val filteredTransactions = remember(transactions.value, selectedFilter, selectedDateFilter, selectedCategory) {
+        var result = when (selectedFilter) {
             1 -> {
                 val incomes = transactions.value.filter { it.isIncome }
                 Log.d("TransactionsFilter", "Filtered Incomes: $incomes")
@@ -103,6 +118,36 @@ fun TransactionsScreen(
             }
             else -> transactions.value
         }
+        result = when (selectedDateFilter) {
+            1 -> { // Últimos 7 días
+                val sevenDaysAgo = Calendar.getInstance(TimeZone.getDefault()).apply {
+                    add(Calendar.DAY_OF_MONTH, -7)
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }.timeInMillis
+                result.filter { it.startDate != null && it.startDate >= sevenDaysAgo && it.startDate <= today.timeInMillis }
+            }
+            2 -> { // Último mes
+                val oneMonthAgo = Calendar.getInstance(TimeZone.getDefault()).apply {
+                    add(Calendar.MONTH, -1)
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }.timeInMillis
+                result.filter { it.startDate != null && it.startDate >= oneMonthAgo && it.startDate <= today.timeInMillis }
+            }
+            else -> result // Todo
+        }
+        result = if (selectedCategory != "Todas") {
+            result.filter { it.category == selectedCategory }
+        } else {
+            result
+        }
+        Log.d("TransactionsFilter", "Filtered Transactions (Type=$selectedFilter, Date=$selectedDateFilter, Category=$selectedCategory): $result")
+        result
     }
     val decimalFormat = DecimalFormat("C$ #,##0.00")
     val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).apply {
@@ -159,6 +204,61 @@ fun TransactionsScreen(
                     Text("Gastos")
                 }
             }
+            SingleChoiceSegmentedButtonRow(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                SegmentedButton(
+                    selected = selectedDateFilter == 0,
+                    onClick = { selectedDateFilter = 0 },
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3)
+                ) {
+                    Text("Todo")
+                }
+                SegmentedButton(
+                    selected = selectedDateFilter == 1,
+                    onClick = { selectedDateFilter = 1 },
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3)
+                ) {
+                    Text("Últ. 7 días")
+                }
+                SegmentedButton(
+                    selected = selectedDateFilter == 2,
+                    onClick = { selectedDateFilter = 2 },
+                    shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3)
+                ) {
+                    Text("Últ. mes")
+                }
+            }
+            ExposedDropdownMenuBox(
+                expanded = isCategoryDropdownExpanded,
+                onExpandedChange = { isCategoryDropdownExpanded = !isCategoryDropdownExpanded },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                TextField(
+                    value = selectedCategory,
+                    onValueChange = { /* No permite edición manual */ },
+                    label = { Text("Categoría") },
+                    readOnly = true,
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isCategoryDropdownExpanded) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor()
+                )
+                ExposedDropdownMenu(
+                    expanded = isCategoryDropdownExpanded,
+                    onDismissRequest = { isCategoryDropdownExpanded = false }
+                ) {
+                    categories.forEach { category ->
+                        DropdownMenuItem(
+                            text = { Text(category) },
+                            onClick = {
+                                selectedCategory = category
+                                isCategoryDropdownExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.Start
@@ -187,7 +287,11 @@ fun TransactionsScreen(
                             1 -> "No hay ingresos"
                             2 -> "No hay gastos"
                             else -> "No hay transacciones"
-                        },
+                        } + when (selectedDateFilter) {
+                            1 -> " en los últimos 7 días"
+                            2 -> " en el último mes"
+                            else -> ""
+                        } + if (selectedCategory != "Todas") " para la categoría $selectedCategory" else "",
                         fontWeight = FontWeight.Medium,
                         textAlign = TextAlign.Center
                     )
@@ -284,10 +388,8 @@ fun TransactionsScreen(
                                     return@launch
                                 }
                                 Log.d("DeleteTransaction", "Deleting transaction: $transaction")
-                                // Delete the transaction
                                 db.collection("users").document(userId).collection("transactions")
                                     .document(transaction.id).delete().await()
-                                // If it's a Sueldo income transaction, delete associated tax transaction
                                 if (transaction.isIncome && transaction.category == "Sueldo" && transaction.startDate != null) {
                                     try {
                                         val taxTransactionQuery = db.collection("users").document(userId).collection("transactions")
@@ -304,7 +406,6 @@ fun TransactionsScreen(
                                         Log.w("DeleteTransaction", "No tax transaction found or error: ${e.message}")
                                     }
                                 }
-                                // If the transaction is recurring, delete the associated template
                                 if (transaction.isRecurring) {
                                     try {
                                         val templateQuery = db.collection("users").document(userId).collection("recurring_templates")
@@ -316,7 +417,6 @@ fun TransactionsScreen(
                                             Log.d("DeleteTransaction", "Deleting template: ${doc.id}")
                                             db.collection("users").document(userId).collection("recurring_templates")
                                                 .document(doc.id).delete().await()
-                                            // If the template is for Sueldo, delete the associated tax template
                                             if (transaction.isIncome && transaction.category == "Sueldo") {
                                                 try {
                                                     val taxTemplateQuery = db.collection("users").document(userId).collection("recurring_templates")

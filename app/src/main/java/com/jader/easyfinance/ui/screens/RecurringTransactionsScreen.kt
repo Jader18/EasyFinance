@@ -15,14 +15,18 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -35,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.google.firebase.auth.FirebaseAuth
@@ -49,6 +54,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.text.DecimalFormat
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
@@ -60,6 +66,9 @@ fun RecurringTransactionsScreen(
     modifier: Modifier = Modifier
 ) {
     var selectedFilter by remember { mutableIntStateOf(0) } // 0 = Todos, 1 = Ingresos, 2 = Gastos
+    var selectedDateFilter by remember { mutableIntStateOf(0) } // 0 = Todo, 1 = Últ. 7 días, 2 = Últ. mes
+    var selectedCategory by remember { mutableStateOf("Todas") } // Filtro por categoría
+    var isCategoryDropdownExpanded by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var templateToDelete by remember { mutableStateOf<RecurringTransactionTemplate?>(null) }
     val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
@@ -79,10 +88,49 @@ fun RecurringTransactionsScreen(
         awaitClose { listener.remove() }
     }
     val templates by templatesFlow.collectAsState(initial = emptyList())
-    val filteredTemplates = when (selectedFilter) {
-        1 -> templates.filter { it.isIncome }
-        2 -> templates.filter { !it.isIncome }
-        else -> templates
+    val today = Calendar.getInstance(TimeZone.getDefault()).apply {
+        set(Calendar.HOUR_OF_DAY, 23)
+        set(Calendar.MINUTE, 59)
+        set(Calendar.SECOND, 59)
+        set(Calendar.MILLISECOND, 999)
+    }
+    val categories = listOf("Todas", "Sueldo", "Otros", "Alimentos", "Transporte", "Entretenimiento", "Hogar", "Impuestos")
+    val filteredTemplates = remember(templates, selectedFilter, selectedDateFilter, selectedCategory) {
+        var result = when (selectedFilter) {
+            1 -> templates.filter { it.isIncome }
+            2 -> templates.filter { !it.isIncome }
+            else -> templates
+        }
+        result = when (selectedDateFilter) {
+            1 -> { // Últimos 7 días
+                val sevenDaysAgo = Calendar.getInstance(TimeZone.getDefault()).apply {
+                    add(Calendar.DAY_OF_MONTH, -7)
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }.timeInMillis
+                result.filter { it.startDate != null && it.startDate >= sevenDaysAgo && it.startDate <= today.timeInMillis }
+            }
+            2 -> { // Último mes
+                val oneMonthAgo = Calendar.getInstance(TimeZone.getDefault()).apply {
+                    add(Calendar.MONTH, -1)
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }.timeInMillis
+                result.filter { it.startDate != null && it.startDate >= oneMonthAgo && it.startDate <= today.timeInMillis }
+            }
+            else -> result // Todo
+        }
+        result = if (selectedCategory != "Todas") {
+            result.filter { it.category == selectedCategory }
+        } else {
+            result
+        }
+        Log.d("TemplatesFilter", "Filtered Templates (Type=$selectedFilter, Date=$selectedDateFilter, Category=$selectedCategory): $result")
+        result
     }
     val decimalFormat = DecimalFormat("C$ #,##0.00")
     val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).apply {
@@ -138,6 +186,61 @@ fun RecurringTransactionsScreen(
                     Text("Gastos")
                 }
             }
+            SingleChoiceSegmentedButtonRow(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                SegmentedButton(
+                    selected = selectedDateFilter == 0,
+                    onClick = { selectedDateFilter = 0 },
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3)
+                ) {
+                    Text("Todo")
+                }
+                SegmentedButton(
+                    selected = selectedDateFilter == 1,
+                    onClick = { selectedDateFilter = 1 },
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3)
+                ) {
+                    Text("Últ. 7 días")
+                }
+                SegmentedButton(
+                    selected = selectedDateFilter == 2,
+                    onClick = { selectedDateFilter = 2 },
+                    shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3)
+                ) {
+                    Text("Últ. mes")
+                }
+            }
+            ExposedDropdownMenuBox(
+                expanded = isCategoryDropdownExpanded,
+                onExpandedChange = { isCategoryDropdownExpanded = !isCategoryDropdownExpanded },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                TextField(
+                    value = selectedCategory,
+                    onValueChange = { /* No permite edición manual */ },
+                    label = { Text("Categoría") },
+                    readOnly = true,
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isCategoryDropdownExpanded) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor()
+                )
+                ExposedDropdownMenu(
+                    expanded = isCategoryDropdownExpanded,
+                    onDismissRequest = { isCategoryDropdownExpanded = false }
+                ) {
+                    categories.forEach { category ->
+                        DropdownMenuItem(
+                            text = { Text(category) },
+                            onClick = {
+                                selectedCategory = category
+                                isCategoryDropdownExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
             if (filteredTemplates.isEmpty()) {
                 Column(
                     modifier = Modifier.fillMaxSize(),
@@ -149,8 +252,13 @@ fun RecurringTransactionsScreen(
                             1 -> "No hay ingresos recurrentes"
                             2 -> "No hay gastos recurrentes"
                             else -> "No hay transacciones recurrentes"
-                        },
-                        fontWeight = FontWeight.Medium
+                        } + when (selectedDateFilter) {
+                            1 -> " en los últimos 7 días"
+                            2 -> " en el último mes"
+                            else -> ""
+                        } + if (selectedCategory != "Todas") " para la categoría $selectedCategory" else "",
+                        fontWeight = FontWeight.Medium,
+                        textAlign = TextAlign.Center
                     )
                 }
             } else {
@@ -229,10 +337,8 @@ fun RecurringTransactionsScreen(
                 Button(onClick = {
                     coroutineScope.launch {
                         templateToDelete?.let { template ->
-                            // Delete the template
                             db.collection("users").document(userId).collection("recurring_templates")
                                 .document(template.id).delete().await()
-                            // If it's a Sueldo template, delete the associated tax template
                             if (template.isIncome && template.category == "Sueldo" && template.startDate != null) {
                                 val taxTemplate = db.collection("users").document(userId).collection("recurring_templates")
                                     .whereEqualTo("category", "Impuestos")
