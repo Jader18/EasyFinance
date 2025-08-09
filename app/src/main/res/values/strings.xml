@@ -1,4 +1,55 @@
 <resources>
     <string name="app_name">Easy Finance</string>
     <string name="default_web_client_id">YOUR_WEB_CLIENT_ID</string>
+
+    <string-array name="financial_quotes">
+        <item>El control de tus finanzas es el primer paso hacia la libertad.</item>
+        <item>Cada ahorro es un pequeño triunfo hacia tus sueños.</item>
+        <item>Planifica hoy para disfrutar mañana.</item>
+        <item>El dinero bien gestionado es la llave del éxito.</item>
+        <item>No se trata de cuánto ganas, sino de cómo lo administras.</item>
+        <item>Ahorrar es invertir en tu futuro.</item>
+        <item>La disciplina financiera abre puertas que el talento no puede.</item>
+        <item>Gasta menos de lo que ganas, invierte la diferencia.</item>
+        <item>El éxito financiero empieza con un buen hábito.</item>
+        <item>No permitas que tus gastos controlen tu vida.</item>
+        <item>La paciencia y el ahorro son aliados poderosos.</item>
+        <item>Transforma cada centavo en un paso hacia tus metas.</item>
+        <item>Haz que tu dinero trabaje para ti, no tú para él.</item>
+        <item>Invertir es sembrar hoy para cosechar mañana.</item>
+        <item>La educación financiera es la mejor inversión.</item>
+        <item>No postergues tu tranquilidad financiera.</item>
+        <item>El ahorro constante crea estabilidad y oportunidades.</item>
+        <item>Tu futuro depende de las decisiones que tomes hoy.</item>
+        <item>El dinero es una herramienta, no un fin.</item>
+        <item>Controla tus gastos, controla tu vida.</item>
+        <item>Un buen presupuesto es el mapa hacia tus sueños.</item>
+        <item>Las pequeñas inversiones diarias generan grandes resultados.</item>
+        <item>La libertad financiera es un viaje, no un destino.</item>
+        <item>Piensa en grande, ahorra en pequeño.</item>
+        <item>Haz que cada gasto tenga un propósito.</item>
+        <item>Aprende a diferenciar entre deseos y necesidades.</item>
+        <item>El conocimiento financiero es poder real.</item>
+        <item>No hay mejor momento para empezar que hoy.</item>
+        <item>La clave está en la constancia, no en la cantidad.</item>
+        <item>El dinero no crece en árboles, crece en hábitos.</item>
+        <item>El ahorro te protege cuando llegan tiempos difíciles.</item>
+        <item>La riqueza empieza en la mente y se refleja en la cartera.</item>
+        <item>Invierte en ti mismo, es la inversión más segura.</item>
+        <item>Ganar dinero es importante, pero mantenerlo es esencial.</item>
+        <item>Aprende a decir no para decir sí a tus sueños.</item>
+        <item>Con cada gasto consciente, creas un futuro mejor.</item>
+        <item>El control financiero te da la libertad de vivir como quieres.</item>
+        <item>Las metas financieras claras guían el camino.</item>
+        <item>El ahorro hoy es la seguridad de mañana.</item>
+        <item>Haz del ahorro un hábito, no un sacrificio.</item>
+        <item>La planificación financiera es un acto de amor propio.</item>
+        <item>El dinero bien manejado multiplica tus posibilidades.</item>
+        <item>La libertad financiera comienza con una decisión.</item>
+        <item>Construye hoy la base de tu independencia económica.</item>
+        <item>El control de tus gastos es control de tu destino.</item>
+        <item>Transforma cada peso en un ladrillo para tu futuro.</item>
+    </string-array>
+
+
 </resources>

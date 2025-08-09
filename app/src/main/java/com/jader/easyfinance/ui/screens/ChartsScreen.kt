@@ -2,28 +2,13 @@ package com.jader.easyfinance.ui.screens
 
 import android.util.Log
 import android.view.ViewGroup
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.State
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -31,18 +16,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation.NavController
 import com.github.mikephil.charting.charts.CombinedChart
+import com.github.mikephil.charting.charts.PieChart
 import com.github.mikephil.charting.components.Legend
 import com.github.mikephil.charting.components.XAxis
-import com.github.mikephil.charting.data.BarData
-import com.github.mikephil.charting.data.BarDataSet
-import com.github.mikephil.charting.data.BarEntry
-import com.github.mikephil.charting.data.CombinedData
-import com.github.mikephil.charting.data.Entry
-import com.github.mikephil.charting.data.LineData
-import com.github.mikephil.charting.data.LineDataSet
-import com.github.mikephil.charting.data.PieData
-import com.github.mikephil.charting.data.PieDataSet
-import com.github.mikephil.charting.data.PieEntry
+import com.github.mikephil.charting.data.*
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.ktx.firestore
@@ -53,9 +30,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
-import java.util.Locale
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,6 +40,7 @@ fun ChartsScreen(
 ) {
     val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
     val db = Firebase.firestore
+
     val transactionsFlow: Flow<List<Transaction>> = callbackFlow {
         val listener = db.collection("users").document(userId)
             .collection("transactions")
@@ -79,26 +55,21 @@ fun ChartsScreen(
             }
         awaitClose { listener.remove() }
     }
-    val transactions: State<List<Transaction>> = transactionsFlow.collectAsState(initial = emptyList())
 
-    // Calculate income totals by category
-    val incomeTotals: Map<String, Float> = transactions.value
-        .filter { transaction: Transaction -> transaction.isIncome }
-        .groupBy { transaction: Transaction -> transaction.category }
-        .mapValues { entry: Map.Entry<String, List<Transaction>> ->
-            entry.value.sumOf { transaction: Transaction -> transaction.amount.toDouble() }.toFloat()
-        }
+    val transactions by transactionsFlow.collectAsState(initial = emptyList())
 
-    // Calculate expense totals by category
-    val expenseTotals: Map<String, Float> = transactions.value
-        .filter { transaction: Transaction -> !transaction.isIncome }
-        .groupBy { transaction: Transaction -> transaction.category }
-        .mapValues { entry: Map.Entry<String, List<Transaction>> ->
-            entry.value.sumOf { transaction: Transaction -> transaction.amount.toDouble() }.toFloat()
-        }
+    val incomeTotals = transactions
+        .filter { it.isIncome }
+        .groupBy { it.category }
+        .mapValues { entry -> entry.value.sumOf { it.amount }.toFloat() }
+
+    val expenseTotals = transactions
+        .filter { !it.isIncome }
+        .groupBy { it.category }
+        .mapValues { entry -> entry.value.sumOf { it.amount }.toFloat() }
 
     val (quincenaLabels, incomesQuincenales, expensesQuincenales) = remember(transactions) {
-        calculateQuincenalTotals(transactions.value)
+        calculateQuincenalTotals(transactions)
     }
 
     Scaffold(
@@ -114,7 +85,6 @@ fun ChartsScreen(
                         )
                     }
                 }
-
             )
         }
     ) { innerPadding ->
@@ -128,15 +98,15 @@ fun ChartsScreen(
         ) {
             Text(
                 text = "Distribución de Ingresos",
-                style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
-                color = androidx.compose.material3.MaterialTheme.colorScheme.onBackground
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground
             )
             PieChartView(dataMap = incomeTotals)
 
             Text(
                 text = "Distribución de Gastos",
-                style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
-                color = androidx.compose.material3.MaterialTheme.colorScheme.onBackground
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground
             )
             PieChartView(dataMap = expenseTotals)
 
@@ -144,8 +114,8 @@ fun ChartsScreen(
 
             Text(
                 text = "Comparación Quincenal Gastos vs Ingresos",
-                style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
-                color = androidx.compose.material3.MaterialTheme.colorScheme.onBackground
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground
             )
             BarComparisonChart(
                 incomes = incomesQuincenales,
@@ -161,8 +131,6 @@ fun calculateQuincenalTotals(
     transactions: List<Transaction>
 ): Triple<List<String>, FloatArray, FloatArray> {
     val dateFormat = SimpleDateFormat("dd/MM", Locale.getDefault())
-
-    val today = Calendar.getInstance()
 
     val quincenaActualStart = Calendar.getInstance()
     val day = quincenaActualStart.get(Calendar.DAY_OF_MONTH)
@@ -182,16 +150,12 @@ fun calculateQuincenalTotals(
     val quincenaSiguienteStart = quincenaActualStart.clone() as Calendar
     quincenaSiguienteStart.add(Calendar.DAY_OF_MONTH, 15)
 
-    fun sumBetweenDates(
-        start: Calendar,
-        end: Calendar,
-        isIncome: Boolean
-    ): Float {
+    fun sumBetweenDates(start: Calendar, end: Calendar, isIncome: Boolean): Float {
         return transactions.filter { transaction ->
             val tDateMillis = transaction.startDate ?: return@filter false
             val tDate = Date(tDateMillis)
             !tDate.before(start.time) && tDate.before(end.time) && transaction.isIncome == isIncome
-        }.sumOf { transaction -> transaction.amount.toDouble() }.toFloat()
+        }.sumOf { it.amount.toDouble() }.toFloat()
     }
 
     val quincenaPasadaEnd = quincenaPasadaStart.clone() as Calendar
@@ -232,13 +196,14 @@ fun PieChartView(dataMap: Map<String, Float>, modifier: Modifier = Modifier) {
         Color(0xFF9C27B0).toArgb(),
         Color(0xFF009688).toArgb()
     )
+    val textColor = MaterialTheme.colorScheme.onBackground.toArgb()
 
     AndroidView(
         modifier = modifier
             .fillMaxWidth()
             .height(300.dp),
         factory = { context ->
-            com.github.mikephil.charting.charts.PieChart(context).apply {
+            PieChart(context).apply {
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
@@ -248,7 +213,7 @@ fun PieChartView(dataMap: Map<String, Float>, modifier: Modifier = Modifier) {
                 setDrawEntryLabels(false)
                 legend.orientation = Legend.LegendOrientation.VERTICAL
                 legend.isWordWrapEnabled = true
-                legend.textColor = android.graphics.Color.WHITE
+                legend.textColor = textColor
                 setExtraOffsets(5f, 10f, 5f, 5f)
                 isRotationEnabled = true
                 setHoleColor(android.graphics.Color.TRANSPARENT)
@@ -259,7 +224,7 @@ fun PieChartView(dataMap: Map<String, Float>, modifier: Modifier = Modifier) {
                 setColors(colors)
                 sliceSpace = 2f
                 valueTextSize = 12f
-                valueTextColor = android.graphics.Color.WHITE
+                valueTextColor = textColor
                 valueFormatter = com.github.mikephil.charting.formatter.PercentFormatter(pieChart)
             }
             pieChart.data = PieData(dataSet)
@@ -275,6 +240,11 @@ fun BarComparisonChart(
     quincenaLabels: List<String>,
     modifier: Modifier = Modifier
 ) {
+    // Usa colores dinámicos del tema
+    val onBackgroundColor = MaterialTheme.colorScheme.onBackground.toArgb()
+    val incomeColor = MaterialTheme.colorScheme.primary.toArgb() // Verde u otro del tema
+    val expenseColor = MaterialTheme.colorScheme.error.toArgb()  // Rojo u otro del tema
+
     AndroidView(
         modifier = modifier
             .fillMaxWidth()
@@ -290,16 +260,16 @@ fun BarComparisonChart(
                     isEnabled = true
                     verticalAlignment = Legend.LegendVerticalAlignment.TOP
                     horizontalAlignment = Legend.LegendHorizontalAlignment.LEFT
-                    textColor = android.graphics.Color.WHITE
+                    textColor = onBackgroundColor
                     textSize = 14f
                 }
                 axisRight.isEnabled = false
-                axisLeft.textColor = android.graphics.Color.WHITE
+                axisLeft.textColor = onBackgroundColor
                 xAxis.apply {
                     position = XAxis.XAxisPosition.BOTTOM
                     granularity = 1f
                     setDrawGridLines(false)
-                    textColor = android.graphics.Color.WHITE
+                    textColor = onBackgroundColor
                     valueFormatter = IndexAxisValueFormatter(quincenaLabels)
                     axisMinimum = -0.5f
                     axisMaximum = incomes.size - 0.5f
@@ -312,8 +282,8 @@ fun BarComparisonChart(
         update = { chart ->
             val barEntries = expenses.mapIndexed { index, value -> BarEntry(index.toFloat(), value) }
             val barDataSet = BarDataSet(barEntries, "Gastos").apply {
-                color = android.graphics.Color.RED
-                valueTextColor = android.graphics.Color.WHITE
+                color = expenseColor
+                valueTextColor = onBackgroundColor
                 valueTextSize = 12f
                 setDrawValues(true)
             }
@@ -323,14 +293,14 @@ fun BarComparisonChart(
 
             val lineEntries = incomes.mapIndexed { index, value -> Entry(index.toFloat(), value) }
             val lineDataSet = LineDataSet(lineEntries, "Ingresos").apply {
-                color = android.graphics.Color.GREEN
+                color = incomeColor
                 lineWidth = 2.5f
                 setDrawCircles(true)
                 circleRadius = 5f
                 circleHoleRadius = 2.5f
                 setDrawValues(true)
                 valueTextSize = 12f
-                valueTextColor = android.graphics.Color.GREEN
+                valueTextColor = incomeColor
             }
             val lineData = LineData(lineDataSet)
 
@@ -342,3 +312,4 @@ fun BarComparisonChart(
         }
     )
 }
+

@@ -5,35 +5,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.FileUpload
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Logout
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.NavigationDrawerItem
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.rememberDrawerState
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.State
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -54,6 +30,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
 import java.text.DecimalFormat
+import java.util.Calendar
+import java.util.Date
+import kotlin.random.Random
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,11 +59,17 @@ fun HomeScreen(
         awaitClose { listener.remove() }
     }
     val transactions: State<List<Transaction>> = transactionsFlow.collectAsState(initial = emptyList())
+    val today = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 23)
+        set(Calendar.MINUTE, 59)
+        set(Calendar.SECOND, 59)
+        set(Calendar.MILLISECOND, 999)
+    }
     val totalIncomes: Double = transactions.value
-        .filter { it.isIncome }
+        .filter { it.isIncome && it.startDate != null && Date(it.startDate) <= today.time }
         .sumOf { it.amount }
     val totalExpenses: Double = transactions.value
-        .filter { !it.isIncome }
+        .filter { !it.isIncome && it.startDate != null && Date(it.startDate) <= today.time }
         .sumOf { it.amount }
     val balance: Double = totalIncomes - totalExpenses
     val decimalFormat = DecimalFormat("C$ #,##0.00")
@@ -110,13 +95,30 @@ fun HomeScreen(
         }
     }
 
+    // Lista simple de frases motivacionales
+    val motivationalQuotes = listOf(
+        "Cada centavo cuenta, ¡sigue adelante!",
+        "Controla tus gastos, controla tu vida.",
+        "El ahorro de hoy es la tranquilidad de mañana.",
+        "Invierte en ti mismo y en tu futuro financiero.",
+        "Una pequeña disciplina financiera puede cambiar tu vida.",
+        "Gasta con conciencia, vive con libertad.",
+        "Tus finanzas, tu poder.",
+        "No es cuánto ganas, sino cuánto ahorras.",
+        "El éxito financiero comienza con un buen hábito.",
+        "Planea hoy para un mejor mañana."
+    )
+
+    // Escoge una frase aleatoria cada vez que el HomeScreen se componga
+    val quote = remember { motivationalQuotes.random() }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surface) // Set background color
+                    .background(MaterialTheme.colorScheme.surface)
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -124,6 +126,7 @@ fun HomeScreen(
                     text = "MENU",
                     fontSize = 30.sp,
                     fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
                 NavigationDrawerItem(
@@ -226,17 +229,29 @@ fun HomeScreen(
                 Text(
                     text = "Balance: ${decimalFormat.format(balance)}",
                     fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
                 )
                 Text(
                     text = "Total Ingresos: ${decimalFormat.format(totalIncomes)}",
-                    fontSize = 18.sp
+                    fontSize = 18.sp,
+                    color = MaterialTheme.colorScheme.onBackground
                 )
                 Text(
                     text = "Total Gastos: ${decimalFormat.format(totalExpenses)}",
-                    fontSize = 18.sp
+                    fontSize = 18.sp,
+                    color = MaterialTheme.colorScheme.onBackground
                 )
-
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(
+                    text = quote,
+                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 18.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 32.dp),
+                    maxLines = 3
+                )
             }
         }
     }
